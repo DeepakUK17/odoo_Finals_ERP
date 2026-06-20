@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 import {
   ShoppingCart, TruckIcon, Factory, Package,
   AlertTriangle, TrendingUp, Activity, Clock, X
@@ -12,7 +13,7 @@ import {
 
 const ROLE_KPIS = {
   admin: [
-    { key: 'totalSales', label: 'Total Sales Orders', icon: ShoppingCart, color: 'hsl(217,91%,60%)', bg: 'hsla(217,91%,60%,0.12)' },
+    { key: 'weeklyOrders', label: 'Sales Orders (This Week)', icon: ShoppingCart, color: 'hsl(217,91%,60%)', bg: 'hsla(217,91%,60%,0.12)' },
     { key: 'pendingDeliveries', label: 'Pending Deliveries', icon: TruckIcon, color: 'hsl(38,92%,50%)', bg: 'hsla(38,92%,50%,0.12)' },
     { key: 'totalMO', label: 'Manufacturing Orders', icon: Factory, color: 'hsl(199,89%,55%)', bg: 'hsla(199,89%,55%,0.12)' },
     { key: 'lowStockCount', label: 'Low Stock Alerts', icon: AlertTriangle, color: 'hsl(0,84%,60%)', bg: 'hsla(0,84%,60%,0.12)' },
@@ -20,7 +21,7 @@ const ROLE_KPIS = {
     { key: 'totalProducts', label: 'Products', icon: Package, color: 'hsl(142,69%,45%)', bg: 'hsla(142,69%,45%,0.12)' },
   ],
   sales: [
-    { key: 'totalSales', label: 'Total Sales Orders', icon: ShoppingCart, color: 'hsl(217,91%,60%)', bg: 'hsla(217,91%,60%,0.12)' },
+    { key: 'weeklyOrders', label: 'Sales Orders (This Week)', icon: ShoppingCart, color: 'hsl(217,91%,60%)', bg: 'hsla(217,91%,60%,0.12)' },
     { key: 'pendingDeliveries', label: 'Pending Deliveries', icon: TruckIcon, color: 'hsl(38,92%,50%)', bg: 'hsla(38,92%,50%,0.12)' },
     { key: 'weeklyRevenue', label: 'Revenue This Week (₹)', icon: TrendingUp, color: 'hsl(142,69%,45%)', bg: 'hsla(142,69%,45%,0.12)' },
   ],
@@ -52,12 +53,13 @@ export default function Dashboard() {
     const load = async () => {
       setLoading(true);
       try {
+        const t = Date.now();
         const [s, ls, ra, cd, fc] = await Promise.all([
-          api.get('/dashboard/summary'),
-          api.get('/dashboard/low-stock'),
-          api.get('/dashboard/recent-activity'),
-          api.get('/dashboard/sales-chart'),
-          api.get('/dashboard/digital-twin'),
+          api.get('/dashboard/summary', { params: { _t: t } }),
+          api.get('/dashboard/low-stock', { params: { _t: t } }),
+          api.get('/dashboard/recent-activity', { params: { _t: t } }),
+          api.get('/dashboard/sales-chart', { params: { _t: t } }),
+          api.get('/dashboard/digital-twin', { params: { _t: t } }),
         ]);
         setSummary(s.data.data || {});
         setLowStock(ls.data.data || []);
@@ -75,6 +77,35 @@ export default function Dashboard() {
     };
     load();
   }, []);
+
+  const socket = useSocket();
+  useEffect(() => {
+    if (!socket) return;
+    const handleDataUpdated = () => {
+      const t = Date.now();
+      Promise.all([
+        api.get('/dashboard/summary', { params: { _t: t } }),
+        api.get('/dashboard/low-stock', { params: { _t: t } }),
+        api.get('/dashboard/recent-activity', { params: { _t: t } }),
+        api.get('/dashboard/sales-chart', { params: { _t: t } }),
+        api.get('/dashboard/digital-twin', { params: { _t: t } })
+      ]).then(([s, ls, ra, cd, fc]) => {
+        setSummary(s.data.data || {});
+        setLowStock(ls.data.data || []);
+        setRecentActivity(ra.data.data || []);
+        setForecast((fc.data.data || []).filter(f => f.daysToStockOut !== null && f.daysToStockOut < 30).sort((a, b) => (a.daysToStockOut || 999) - (b.daysToStockOut || 999)).slice(0, 6));
+
+        const days = cd.data.data || [];
+        setChartData(days.map(d => ({
+          name: new Date(d.date).toLocaleDateString('en-IN', { weekday: 'short' }),
+          Revenue: d.revenue || 0,
+          Orders: d.count || 0
+        })));
+      });
+    };
+    socket.on('data_updated', handleDataUpdated);
+    return () => socket.off('data_updated', handleDataUpdated);
+  }, [socket]);
 
   const kpis = ROLE_KPIS[user?.role] || ROLE_KPIS.admin;
 

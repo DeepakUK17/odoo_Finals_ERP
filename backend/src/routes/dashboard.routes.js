@@ -24,7 +24,7 @@ router.get('/summary', authMiddleware, async (req, res, next) => {
     const lowStockProducts = allProducts.filter(p => p.onHandQty <= p.minStockLevel);
     const totalStockValue = allProducts.reduce((sum, p) => sum + (p.onHandQty * p.costPrice), 0);
 
-    // Revenue this week
+    // Revenue & Orders this week (last 7 days)
     const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
     const recentSales = await prisma.salesOrder.findMany({
       where: { status: 'fully_delivered', deliveredAt: { gte: weekAgo } },
@@ -32,10 +32,14 @@ router.get('/summary', authMiddleware, async (req, res, next) => {
     });
     const weeklyRevenue = recentSales.reduce((s, o) => s + o.totalAmount, 0);
 
+    const weeklyOrdersCount = await prisma.salesOrder.count({
+      where: { createdAt: { gte: weekAgo } }
+    });
+
     // Role-based summary
     const summary = { role };
     if (['admin', 'sales'].includes(role)) {
-      Object.assign(summary, { totalSales, pendingDeliveries, weeklyRevenue });
+      Object.assign(summary, { totalSales, pendingDeliveries, weeklyRevenue, weeklyOrders: weeklyOrdersCount });
     }
     if (['admin', 'purchase'].includes(role)) {
       Object.assign(summary, { totalPurchase, partialReceipts });
@@ -50,7 +54,7 @@ router.get('/summary', authMiddleware, async (req, res, next) => {
       Object.assign(summary, {
         totalSales, pendingDeliveries, totalPurchase, partialReceipts,
         totalMO, activeMO, lowStockCount: lowStockProducts.length,
-        totalStockValue, weeklyRevenue, totalProducts: allProducts.length
+        totalStockValue, weeklyRevenue, weeklyOrders: weeklyOrdersCount, totalProducts: allProducts.length
       });
     }
 

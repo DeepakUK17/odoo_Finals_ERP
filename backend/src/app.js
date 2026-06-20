@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const http = require('http');
 const path = require('path');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -20,6 +21,32 @@ app.use(morgan('dev'));
 // ─── Static Files ────────────────────────────
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
+// ─── Global No-Cache Middleware ──────────────
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
+  next();
+});
+
+// ─── Global Socket Emitter Middleware ────────
+app.use((req, res, next) => {
+  const originalJson = res.json;
+  res.json = function(data) {
+    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method) && res.statusCode >= 200 && res.statusCode < 300) {
+       if (req.originalUrl.startsWith('/api/')) {
+          const module = req.originalUrl.split('/')[2];
+          const socketManager = require('./lib/socket');
+          // Add a small delay to ensure DB transaction is fully committed and propagated
+          setTimeout(() => {
+            socketManager.emitDataUpdated(module);
+          }, 100);
+       }
+    }
+    return originalJson.call(this, data);
+  };
+  next();
+});
+
 // ─── Routes ──────────────────────────────────
 app.use('/api/auth',            require('./routes/auth.routes'));
 app.use('/api/products',        require('./routes/products.routes'));
@@ -33,7 +60,7 @@ app.use('/api/notifications',   require('./routes/notifications.routes'));
 app.use('/api/ai',              require('./routes/ai.routes'));
 app.use('/api/upload',          require('./routes/upload.routes'));
 app.use('/api/stock-ledger',    require('./routes/stockledger.routes'));
-app.use('/api/invoices',        require('./routes/invoices.routes'));
+
 
 // ─── Health Check ────────────────────────────
 app.get('/api/health', (req, res) => {
@@ -57,7 +84,13 @@ app.use((err, req, res, next) => {
 
 // ─── Start Server ────────────────────────────
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+const server = http.createServer(app);
+
+// Initialize Socket.io
+const socketManager = require('./lib/socket');
+socketManager.init(server);
+
+server.listen(PORT, () => {
   console.log(`\n🚀 Mini ERP Backend running on http://localhost:${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV}`);
   console.log(`🔑 API Base: http://localhost:${PORT}/api\n`);

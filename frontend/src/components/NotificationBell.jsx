@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Bell, Search, X, Check } from 'lucide-react';
 import api from '../api/client';
+import { useSocket } from '../context/SocketContext';
 
 const TYPE_ICON = {
   low_stock: '⚠️',
@@ -36,11 +37,28 @@ export default function NotificationBell() {
     } catch {}
   };
 
+  const socket = useSocket();
+
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000); // poll every 30s
-    return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!socket) return;
+    
+    const handleNewNotif = (notif) => {
+      setNotifications(prev => [notif, ...prev]);
+      setUnreadCount(prev => prev + 1);
+      
+      // Play a subtle notification sound (optional, assuming browser allows)
+      try {
+        new Audio('/notification.mp3').play().catch(() => {});
+      } catch (e) {}
+    };
+
+    socket.on('new_notification', handleNewNotif);
+    return () => socket.off('new_notification', handleNewNotif);
+  }, [socket]);
 
   useEffect(() => {
     const handler = (e) => { if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setOpen(false); };

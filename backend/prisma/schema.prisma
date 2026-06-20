@@ -252,7 +252,6 @@ model SalesOrder {
   // Relations
   items        SalesOrderItem[]
   auditLogs    AuditLog[]
-  invoices     Invoice[]
 
   @@index([status])
   @@index([orderNo])
@@ -463,51 +462,4 @@ model Notification {
   @@map("notifications")
 }
 
-// ─────────────────────────────────────────────
-// INVOICES & PAYMENTS
-// ─────────────────────────────────────────────
 
-enum InvoiceStatus {
-  draft
-  sent
-  partially_paid
-  paid
-  cancelled
-}
-
-model Invoice {
-  id           String        @id @default(uuid())
-  invoiceNo    String        @unique
-  salesOrderId String
-  salesOrder   SalesOrder    @relation(fields: [salesOrderId], references: [id])
-  customer     String
-  status       InvoiceStatus @default(draft)
-  totalAmount  Float
-  amountPaid   Float         @default(0)
-  taxRate      Float         @default(18.0) // e.g. 18% GST
-  taxAmount    Float         @default(0)
-  netAmount    Float         @default(0)
-  issuedAt     DateTime?
-  dueDate      DateTime?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-
-  payments     Payment[]
-  
-  @@index([salesOrderId])
-  @@map("invoices")
-}
-
-model Payment {
-  id           String   @id @default(uuid())
-  invoiceId    String
-  invoice      Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  amount       Float
-  paymentDate  DateTime @default(now())
-  method       String   // e.g. "Cash", "Bank Transfer", "UPI"
-  reference    String?  // Transaction ID
-  createdAt    DateTime @default(now())
-
-  @@index([invoiceId])
-  @@map("payments")
-}

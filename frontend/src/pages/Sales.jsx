@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../api/client';
 import { useToast } from '../context/ToastContext';
+import { useSocket } from '../context/SocketContext';
 import { Plus, Eye, Check, X, Truck, ChevronDown, Search as SearchIcon, Filter, Download, Printer } from 'lucide-react';
 import { exportToCSV } from '../utils/export';
 import ConfirmModal from '../components/ConfirmModal';
@@ -23,7 +24,6 @@ export default function Sales() {
   const [dateFilter, setDateFilter] = useState('all');
   const [saving, setSaving] = useState(false);
   const [procResult, setProcResult] = useState(null);
-  const [printData, setPrintData] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState(null);
 
   // Create form
@@ -31,15 +31,15 @@ export default function Sales() {
   // Deliver form
   const [deliveries, setDeliveries] = useState([]);
 
-  const fetchOrders = async (reset = false) => {
-    setLoading(true);
+  const fetchOrders = async (reset = false, silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const currentPage = reset ? 0 : page;
-      const params = { limit: LIMIT, offset: currentPage * LIMIT };
+      const params = { limit: LIMIT, offset: currentPage * LIMIT, _t: Date.now() };
       if (statusFilter) params.status = statusFilter;
-      
+
       const { data } = await api.get('/sales', { params });
-      
+
       if (reset) {
         setOrders(data.data || []);
       } else {
@@ -52,10 +52,26 @@ export default function Sales() {
       }
       setTotal(data.total || 0);
     } catch { toast.error('Failed to load sales orders'); }
-    setLoading(false);
+    if (!silent) setLoading(false);
   };
 
-  const reload = () => { setPage(0); fetchOrders(true); };
+  const reload = (silent = false) => {
+    if (page === 0) fetchOrders(true, silent);
+    else setPage(0);
+  };
+
+  const socket = useSocket();
+  useEffect(() => {
+    if (!socket) return;
+    const handleDataUpdated = (data) => {
+      if (data.module === 'sales' || data.module === 'products') {
+        reload(true);
+      }
+    };
+    socket.on('data_updated', handleDataUpdated);
+    return () => socket.off('data_updated', handleDataUpdated);
+  }, [socket, page, statusFilter, searchFilter, dateFilter]); // Dependencies match what fetchOrders needs
+
 
   useEffect(() => { reload(); }, [statusFilter]);
   useEffect(() => { if (page > 0) fetchOrders(); }, [page]);
@@ -64,7 +80,7 @@ export default function Sales() {
     try {
       const { data } = await api.get('/products', { params: { type: 'finished' } });
       setProducts(data.data.filter(p => p.canBeSold) || []);
-    } catch {}
+    } catch { }
   };
 
   useEffect(() => { fetchProducts(); }, []);
@@ -113,10 +129,10 @@ export default function Sales() {
 
   const openDeliver = (order) => {
     setShowDeliver(order);
-    setDeliveries(order.items.map(i => ({ 
-      itemId: i.id, 
-      deliveredQty: Math.max(0, Math.min(i.qty - i.deliveredQty, i.product?.onHandQty || 0)), 
-      max: i.qty - i.deliveredQty, 
+    setDeliveries(order.items.map(i => ({
+      itemId: i.id,
+      deliveredQty: Math.max(0, Math.min(i.qty - i.deliveredQty, i.product?.onHandQty || 0)),
+      max: i.qty - i.deliveredQty,
       name: i.product?.name,
       onHand: i.product?.onHandQty || 0
     })));
@@ -146,21 +162,6 @@ export default function Sales() {
         } catch { toast.error('Failed to cancel order'); }
       }
     });
-  };
-
-  const handleGenerateInvoice = async (orderId, orderNo) => {
-    try {
-      await api.post('/invoices', { salesOrderId: orderId });
-      toast.success(`Invoice generated for ${orderNo}`);
-      reload();
-    } catch (err) { toast.error(err.response?.data?.message || 'Failed to generate invoice'); }
-  };
-
-  const handlePrint = (order) => {
-    setPrintData(order);
-    setTimeout(() => {
-      window.print();
-    }, 150);
   };
 
   const getFlowSteps = (status) => {
@@ -230,7 +231,7 @@ export default function Sales() {
             onChange={e => setSearchFilter(e.target.value)}
           />
         </div>
-        
+
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <Filter size={15} color="var(--text-muted)" />
           <select className="form-select" style={{ width: 'auto', padding: '6px 24px 6px 12px', height: 32 }} value={dateFilter} onChange={e => setDateFilter(e.target.value)}>
@@ -240,7 +241,7 @@ export default function Sales() {
           </select>
         </div>
 
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {['', 'draft', 'confirmed', 'partially_delivered', 'fully_delivered', 'cancelled'].map(s => (
             <button key={s} className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setStatusFilter(s)}>
               {s ? s.replace(/_/g, ' ') : 'All Status'}
@@ -290,14 +291,16 @@ export default function Sales() {
                     </td>
                     <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{new Date(o.createdAt).toLocaleDateString('en-IN')}</td>
                     <td>
-                      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                        {o.status === 'draft' && <button className="btn-sm" onClick={(e) => { e.stopPropagation(); handleConfirm(o.id, o.orderNo); }}><Check size={14} /> Confirm</button>}
-                        {['confirmed', 'partially_delivered'].includes(o.status) && <button className="btn-sm" onClick={(e) => { e.stopPropagation(); openDeliver(o); }}><Truck size={14} /> Deliver</button>}
-                        {['confirmed', 'partially_delivered', 'fully_delivered'].includes(o.status) && <button className="btn-sm" style={{ background: 'var(--info-bg)', borderColor: 'var(--info)' }} onClick={(e) => { e.stopPropagation(); handleGenerateInvoice(o.id, o.orderNo); }}><FileText size={14} /> Invoice</button>}
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {o.status === 'draft' && (
+                          <button className="btn btn-sm btn-success" onClick={(e) => { e.stopPropagation(); handleConfirm(o.id, o.orderNo); }} title="Confirm"><Check size={14} /></button>
+                        )}
+                        {['confirmed', 'partially_delivered'].includes(o.status) && (
+                          <button className="btn btn-sm btn-primary" onClick={(e) => { e.stopPropagation(); openDeliver(o); }} title="Deliver"><Truck size={14} /></button>
+                        )}
                         {!['fully_delivered', 'cancelled'].includes(o.status) && (
                           <button className="btn btn-sm btn-danger" onClick={() => handleCancel(o.id, o.orderNo)} title="Cancel"><X size={14} /></button>
                         )}
-                        <button className="btn btn-sm btn-secondary" onClick={() => handlePrint(o)} title="Print Invoice"><Printer size={14} /></button>
                       </div>
                     </td>
                   </tr>
@@ -385,7 +388,7 @@ export default function Sales() {
             </div>
             {deliveries.map((d, i) => (
               <div key={d.itemId} className="form-group">
-                <label className="form-label">{d.name} (Required: {d.max}, Stock: <span style={{color: d.onHand < d.max ? 'var(--danger)' : 'var(--success)'}}>{d.onHand}</span>)</label>
+                <label className="form-label">{d.name} (Required: {d.max}, Stock: <span style={{ color: d.onHand < d.max ? 'var(--danger)' : 'var(--success)' }}>{d.onHand}</span>)</label>
                 <input
                   className="form-input"
                   type="number" min="0" max={Math.min(d.max, d.onHand)}
@@ -434,81 +437,7 @@ export default function Sales() {
         </div>
       )}
 
-      {/* Printable Invoice View (Hidden on Screen, Visible on Print) */}
-      {printData && (
-        <div className="print-only">
-          <div className="print-container">
-            <div className="print-header">
-              <div>
-                <h1 style={{ margin: 0, fontSize: '24px' }}>SHIV FURNITURE WORKS</h1>
-                <p style={{ margin: '4px 0', color: '#555' }}>Premium Quality Furniture Solutions</p>
-                <p style={{ margin: 0, fontSize: '14px' }}>123 Industrial Estate, New Delhi, India</p>
-                <p style={{ margin: 0, fontSize: '14px' }}>Email: contact@shivfurniture.com | Phone: +91 98765 43210</p>
-              </div>
-              <div className="text-right">
-                <h2 style={{ margin: 0, fontSize: '28px', color: '#333' }}>INVOICE</h2>
-                <p style={{ margin: '8px 0 4px', fontWeight: 'bold' }}>Invoice #: {printData.orderNo}</p>
-                <p style={{ margin: 0 }}>Date: {new Date(printData.createdAt).toLocaleDateString('en-IN')}</p>
-                <p style={{ margin: 0 }}>Status: {printData.status.replace(/_/g, ' ').toUpperCase()}</p>
-              </div>
-            </div>
 
-            <div style={{ marginBottom: '30px', border: '1px solid #ddd', padding: '16px', borderRadius: '4px' }}>
-              <h3 style={{ margin: '0 0 10px 0', borderBottom: '1px solid #eee', paddingBottom: '8px' }}>Bill To:</h3>
-              <p style={{ margin: '4px 0', fontWeight: 'bold', fontSize: '16px' }}>{printData.customer}</p>
-              {printData.customerEmail && <p style={{ margin: '4px 0' }}>Email: {printData.customerEmail}</p>}
-              {printData.customerPhone && <p style={{ margin: '4px 0' }}>Phone: {printData.customerPhone}</p>}
-              {printData.notes && <p style={{ margin: '12px 0 0 0', fontStyle: 'italic', color: '#666' }}>Notes: {printData.notes}</p>}
-            </div>
-
-            <table className="print-table">
-              <thead>
-                <tr>
-                  <th>Item Description</th>
-                  <th className="text-right" style={{ width: '100px' }}>Quantity</th>
-                  <th className="text-right" style={{ width: '150px' }}>Unit Price</th>
-                  <th className="text-right" style={{ width: '150px' }}>Total Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {printData.items?.map((item, idx) => (
-                  <tr key={idx}>
-                    <td>
-                      <div style={{ fontWeight: 'bold' }}>{item.product?.name}</div>
-                      <div style={{ fontSize: '12px', color: '#666' }}>{item.product?.sku} | {item.product?.category}</div>
-                    </td>
-                    <td className="text-right">{item.qty} {item.product?.unit || 'Unit'}</td>
-                    <td className="text-right">₹{item.unitPrice?.toLocaleString('en-IN')}</td>
-                    <td className="text-right">₹{(item.qty * item.unitPrice)?.toLocaleString('en-IN')}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
-              <div style={{ width: '300px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <span>Subtotal:</span>
-                  <span>₹{printData.totalAmount?.toLocaleString('en-IN')}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', color: '#666' }}>
-                  <span>Tax (0%):</span>
-                  <span>₹0</span>
-                </div>
-                <div className="print-total" style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Grand Total:</span>
-                  <span>₹{printData.totalAmount?.toLocaleString('en-IN')}</span>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ marginTop: '60px', textAlign: 'center', color: '#666', borderTop: '1px solid #eee', paddingTop: '20px' }}>
-              <p style={{ margin: '0 0 8px 0' }}>Thank you for your business!</p>
-              <p style={{ margin: 0, fontSize: '12px' }}>This is a computer generated invoice and does not require a physical signature.</p>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

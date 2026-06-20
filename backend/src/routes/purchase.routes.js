@@ -7,7 +7,6 @@ const requireRole = require('../middleware/role.middleware');
 const { createAuditLog } = require('../services/audit.service');
 const { updateStock } = require('../services/stock.service');
 const { createNotification } = require('../services/notification.service');
-const { sendPurchaseOrderEmail } = require('../services/email.service');
 
 const poSchema = z.object({
   vendor: z.string().min(1),
@@ -104,13 +103,7 @@ router.post('/:id/confirm', authMiddleware, requireRole('admin', 'purchase'), as
     await createAuditLog({ userId: req.user.id, action: 'CONFIRMED', model: 'PurchaseOrder', recordId: order.id, description: `Purchase Order ${order.orderNo} confirmed`, purchaseOrderId: order.id });
     await createNotification({ type: 'info', title: 'PO Confirmed', message: `${order.orderNo} confirmed with ${order.vendor}`, reference: order.orderNo });
 
-    // Send the Email!
-    const emailResult = await sendPurchaseOrderEmail(confirmedOrder);
-    if (emailResult.success) {
-      await createAuditLog({ userId: req.user.id, action: 'EMAIL_SENT', model: 'PurchaseOrder', recordId: order.id, description: `Ethereal Email sent to Vendor. Preview: ${emailResult.url}`, purchaseOrderId: order.id });
-    }
-
-    res.json({ success: true, data: confirmedOrder, emailPreviewUrl: emailResult.url });
+    res.json({ success: true, data: confirmedOrder });
   } catch (err) { next(err); }
 });
 

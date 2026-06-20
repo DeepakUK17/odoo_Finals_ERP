@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../api/client';
 import { useToast } from '../context/ToastContext';
+import { useSocket } from '../context/SocketContext';
 import { Plus, Check, X, PackageCheck, Search as SearchIcon, Filter, Download, XCircle } from 'lucide-react';
 import { exportToCSV } from '../utils/export';
 import ConfirmModal from '../components/ConfirmModal';
@@ -23,11 +24,11 @@ export default function Purchase() {
   const [receipts, setReceipts] = useState([]);
   const [confirmDialog, setConfirmDialog] = useState(null);
 
-  const fetchOrders = async (reset = false) => {
-    setLoading(true);
+  const fetchOrders = async (reset = false, silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const currentPage = reset ? 0 : page;
-      const params = { limit: LIMIT, offset: currentPage * LIMIT };
+      const params = { limit: LIMIT, offset: currentPage * LIMIT, _t: Date.now() };
       if (statusFilter) params.status = statusFilter;
       const { data } = await api.get('/purchase', { params });
       
@@ -42,10 +43,25 @@ export default function Purchase() {
       }
       setTotal(data.total || 0);
     } catch { toast.error('Failed to load purchase orders'); }
-    setLoading(false);
+    if (!silent) setLoading(false);
   };
 
-  const reload = () => { setPage(0); fetchOrders(true); };
+  const reload = (silent = false) => {
+    if (page === 0) fetchOrders(true, silent);
+    else setPage(0);
+  };
+
+  const socket = useSocket();
+  useEffect(() => {
+    if (!socket) return;
+    const handleDataUpdated = (data) => {
+      if (data.module === 'purchase' || data.module === 'products') {
+        reload(true);
+      }
+    };
+    socket.on('data_updated', handleDataUpdated);
+    return () => socket.off('data_updated', handleDataUpdated);
+  }, [socket, page, statusFilter, searchFilter, dateFilter]);
 
   useEffect(() => { reload(); }, [statusFilter]);
   useEffect(() => { if (page > 0) fetchOrders(); }, [page]);
@@ -93,20 +109,8 @@ export default function Purchase() {
 
   const handleConfirm = async (id, orderNo) => {
     try {
-      const { data } = await api.post(`/purchase/${id}/confirm`);
-      if (data.emailPreviewUrl) {
-        toast.success(
-          <div>
-            {orderNo} confirmed!<br/>
-            <a href={data.emailPreviewUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline', color: 'inherit' }}>
-              Click here to view the email sent to the vendor.
-            </a>
-          </div>,
-          { duration: 10000 } // Keep open longer so they can click
-        );
-      } else {
-        toast.success(`${orderNo} confirmed`);
-      }
+      await api.post(`/purchase/${id}/confirm`);
+      toast.success(`${orderNo} confirmed!`);
       reload();
     } catch (err) { toast.error(err.response?.data?.message || 'Confirm failed'); }
   };
@@ -211,7 +215,7 @@ export default function Purchase() {
           </select>
         </div>
 
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {['', 'draft', 'confirmed', 'partially_received', 'fully_received'].map(s => (
             <button key={s} className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setStatusFilter(s)}>
               {s ? s.replace(/_/g, ' ') : 'All Status'}

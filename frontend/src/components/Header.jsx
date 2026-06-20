@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import NotificationBell from './NotificationBell';
 import ProfileModal from './ProfileModal';
-import { Search } from 'lucide-react';
+import { Search, Menu } from 'lucide-react';
 
 const PAGE_TITLES = {
   '/dashboard': ['Dashboard', 'Business overview'],
@@ -16,7 +16,7 @@ const PAGE_TITLES = {
   '/users': ['User Management', 'Manage team access'],
 };
 
-export default function Header({ collapsed }) {
+export default function Header({ collapsed, onMenuClick }) {
   const { pathname } = useLocation();
   const { user } = useAuth();
   const [showProfile, setShowProfile] = useState(false);
@@ -27,6 +27,9 @@ export default function Header({ collapsed }) {
   return (
     <header className={`header ${collapsed ? 'sidebar-collapsed' : ''}`}>
       <div className="header-left">
+        <button className="mobile-menu-btn icon-btn" onClick={onMenuClick} style={{ marginRight: 12 }}>
+          <Menu size={20} />
+        </button>
         <div className="breadcrumb">
           <span className="breadcrumb-item">Shiv ERP</span>
           <span className="breadcrumb-sep">›</span>
