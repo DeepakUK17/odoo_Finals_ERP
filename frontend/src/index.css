@@ -66,6 +66,53 @@
   --transition-slow: 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+[data-theme='light'] {
+  /* Brand Colors - Keep identical or tweak slightly for better contrast */
+  --primary:        hsl(217, 91%, 60%);
+  --primary-dark:   hsl(217, 91%, 45%);
+  --primary-light:  hsl(217, 91%, 75%);
+  --primary-glow:   hsla(217, 91%, 60%, 0.15);
+
+  --accent:         hsl(270, 91%, 65%);
+  --accent-glow:    hsla(270, 91%, 65%, 0.15);
+
+  /* Status Colors */
+  --success:        hsl(142, 69%, 40%);
+  --success-bg:     hsla(142, 69%, 45%, 0.12);
+  --warning:        hsl(38, 92%, 45%);
+  --warning-bg:     hsla(38, 92%, 50%, 0.12);
+  --danger:         hsl(0, 84%, 55%);
+  --danger-bg:      hsla(0, 84%, 60%, 0.12);
+  --info:           hsl(199, 89%, 50%);
+  --info-bg:        hsla(199, 89%, 55%, 0.12);
+
+  /* Backgrounds */
+  --bg-root:        hsl(210, 40%, 98%);
+  --bg-dark:        hsl(210, 40%, 96%);
+  --bg-card:        hsl(0, 0%, 100%);
+  --bg-card-hover:  hsl(210, 40%, 97.5%);
+  --bg-glass:       rgba(0, 0, 0, 0.02);
+  --bg-glass-hover: rgba(0, 0, 0, 0.05);
+  --bg-input:       hsl(0, 0%, 100%);
+  --bg-sidebar:     hsl(0, 0%, 100%);
+
+  /* Borders */
+  --border:         rgba(0, 0, 0, 0.08);
+  --border-active:  rgba(0, 0, 0, 0.15);
+  --border-primary: rgba(59, 130, 246, 0.3);
+
+  /* Text */
+  --text-primary:   hsl(222, 47%, 11%);
+  --text-secondary: hsl(215, 16%, 40%);
+  --text-muted:     hsl(215, 16%, 50%);
+
+  /* Shadows */
+  --shadow-sm:  0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow:     0 4px 24px rgba(0, 0, 0, 0.06);
+  --shadow-lg:  0 8px 48px rgba(0, 0, 0, 0.08);
+  --shadow-primary: 0 4px 20px rgba(59, 130, 246, 0.15);
+}
+
 /* ── Reset ─────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 16px; scroll-behavior: smooth; }

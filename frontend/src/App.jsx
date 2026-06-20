@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
@@ -17,8 +18,12 @@ import UserManagement from './pages/UserManagement';
 import StockMovements from './pages/StockMovements';
 import { SocketProvider } from './context/SocketContext';
 
-
 export default function App() {
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('erp-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+  }, []);
+
   return (
     <BrowserRouter>
       <AuthProvider>
@@ -37,7 +42,6 @@ export default function App() {
                 <Route path="/audit" element={<AuditLogs />} />
                 <Route path="/users" element={<UserManagement />} />
                 <Route path="/stock" element={<StockMovements />} />
-
               </Route>
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>

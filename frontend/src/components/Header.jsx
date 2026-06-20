@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import NotificationBell from './NotificationBell';
 import ProfileModal from './ProfileModal';
-import { Search, Menu } from 'lucide-react';
+import { Search, Menu, Sun, Moon } from 'lucide-react';
 
 const PAGE_TITLES = {
   '/dashboard': ['Dashboard', 'Business overview'],
@@ -24,6 +24,15 @@ export default function Header({ collapsed, onMenuClick }) {
   const [title, subtitle] = PAGE_TITLES[pathname] || ['ERP', 'Shiv Furniture Works'];
   const initials = user?.name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
 
+  const [theme, setTheme] = useState(localStorage.getItem('erp-theme') || 'dark');
+
+  const toggleTheme = () => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+    localStorage.setItem('erp-theme', newTheme);
+    document.documentElement.setAttribute('data-theme', newTheme);
+  };
+
   return (
     <header className={`header ${collapsed ? 'sidebar-collapsed' : ''}`}>
       <div className="header-left">
@@ -42,6 +51,9 @@ export default function Header({ collapsed, onMenuClick }) {
           <Search size={15} color="var(--text-muted)" />
           <input placeholder="Quick search..." id="header-search-input" />
         </div>
+        <button className="icon-btn" onClick={toggleTheme} style={{ marginRight: 8 }}>
+          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+        </button>
         <NotificationBell />
         <div className="user-avatar" style={{ width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', overflow: 'hidden' }} title={user?.name} onClick={() => setShowProfile(true)}>
           {user?.avatarUrl ? (
