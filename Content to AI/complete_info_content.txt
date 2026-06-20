@@ -1,0 +1,39 @@
+﻿Odoo Hackathon Participant Document
+Welcome to Odoo
+Once the team leader has initiated the team registration, team members along with team leader must follow the steps below to con∩¼ürm their team participation and view their hackathon details.
+Open the Hackathon portal link shared with you.  hackathon.odoo.com
+Click on the option
+Team members should login with the same Github id provided by the team leader while registering in the hackathon.
+Authorize the login if GitHub asks for permission.
+After successful login
+hackathon portal.
+you will be redirected to the
+Once you have logged into the portal, you will see a link prompting you to complete your required information.
+Click on ΓÇ£Con∩¼ürm Your ParticipationΓÇ¥ to open the form.
+In the form, enter all the mandatory details ΓÇö these ∩¼üelds are marked with an asterisk (*) beside them.
+After ∩¼ülling in the required information, click ΓÇ£Save AddressΓÇ¥ .
+After you successfully save your details, you will be redirected back to
+My Account. Next, navigate to the Hackathons tab:
+Under
+are registered in.
+Under
+you will see the details of the hackathons you you can explore future hackathons .
+If any team memberΓÇÖs details are uncon∩¼ürmed, youΓÇÖll be prompted to
+Please follow the timeline strictly as shown in the milestone section.
+On the Hackathon Details page,
+Only Team Leader can click on ΓÇ£Add MemberΓÇ¥ to add new members.
+Team leader can also delete an existing member of they want.
+The team can also view the Mentor assigned to them for the
+hackathon. Add	as collaborator in your
+repository. Please join the discord server by clicking on before the virtual round starts for real time updates.
+Once the problem statement(can be one or more than one based on the round) is announced, they will be visible to you on the details page. You can download the attached document to view the problem statement in detail.
+Only the Team Leader can select a problem statement from the ΓÇÿProblem StatementΓÇÖ dropdown. Once con∩¼ürmed, it cannot be changed.
+The Team Leader has to submit their Github Repo link using the ΓÇ£Submit Github Repo LinkΓÇ¥ button.(Kindly make sure to that you have your code in a single branch of the repository only)
+The Team Leader can submit the teamΓÇÖs solution video using the ΓÇ£Submit Video SolutionΓÇ¥ button.
+Once you submit the result you will see a con∩¼ürmation message on the page itself.
+Results will be announced according to the mentioned Date and Time
+as given in the event details section on the event page.
+All the team members will be able to see their team rank or virtual round result in the ΓÇ£ Team RankΓÇ¥ section once the result is announced on the same page where you have submitted your problem statement.
+/or any queries related to the hackathon, please submit them through the ΓÇ£Hackathon AssistanceΓÇ¥ page in the Helpdesk section.
+Thank You!
+ For any queries, please visit our Helpdesk: Helpdesk
