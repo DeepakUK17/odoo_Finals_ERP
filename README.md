@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="frontend\public\favicon.png" alt="Shiv Furniture Works Logo" style="border-radius: 12px; margin-bottom: 20px;" />
+  <img src="frontend\public\favicon.png" alt="Shiv Furniture Works Logo" style="border-radius: 12px;width:100px;height:100px; margin-bottom: 20px;" />
   <h1>🪑 Shiv Furniture Works - ERP System</h1>
   <p><strong>A Modern, Local-First, AI-Powered Enterprise Resource Planning System</strong></p>
   
