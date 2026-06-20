@@ -10,8 +10,8 @@ const { createNotification } = require('../services/notification.service');
 
 const poSchema = z.object({
   vendor: z.string().min(1),
-  vendorEmail: z.string().email().optional(),
-  vendorPhone: z.string().optional(),
+  vendorEmail: z.string().email().or(z.literal('')).optional(),
+  vendorPhone: z.string().or(z.literal('')).optional(),
   notes: z.string().optional(),
   items: z.array(z.object({
     productId: z.string(),
@@ -23,15 +23,24 @@ const poSchema = z.object({
 // GET /api/purchase
 router.get('/', authMiddleware, requireRole('admin', 'purchase'), async (req, res, next) => {
   try {
-    const { status } = req.query;
+    const { status, limit, offset } = req.query;
     const where = {};
     if (status) where.status = status;
-    const orders = await prisma.purchaseOrder.findMany({
-      where,
-      include: { items: { include: { product: { select: { id: true, name: true, unit: true } } } }, createdBy: { select: { name: true } } },
-      orderBy: { createdAt: 'desc' }
-    });
-    res.json({ success: true, data: orders });
+    
+    const take = limit ? parseInt(limit) : 50;
+    const skip = offset ? parseInt(offset) : 0;
+
+    const [orders, total] = await Promise.all([
+      prisma.purchaseOrder.findMany({
+        where,
+        include: { items: { include: { product: { select: { id: true, name: true, unit: true } } } }, createdBy: { select: { name: true } } },
+        orderBy: { createdAt: 'desc' },
+        take,
+        skip
+      }),
+      prisma.purchaseOrder.count({ where })
+    ]);
+    res.json({ success: true, data: orders, total });
   } catch (err) { next(err); }
 });
 
@@ -58,16 +67,19 @@ router.post('/', authMiddleware, requireRole('admin', 'purchase'), async (req, r
     const orderItems = items.map(i => ({ productId: i.productId, qty: i.qty, unitPrice: i.unitPrice, totalPrice: i.qty * i.unitPrice, receivedQty: 0 }));
     const totalAmount = orderItems.reduce((s, i) => s + i.totalPrice, 0);
 
-    const lastOrder = await prisma.purchaseOrder.findFirst({ orderBy: { createdAt: 'desc' } });
-    const lastNum = lastOrder ? parseInt(lastOrder.orderNo.split('-')[1]) : 0;
-    const orderNo = `PO-${String(lastNum + 1).padStart(4, '0')}`;
+    // Atomic order number generation to prevent race conditions
+    const order = await prisma.$transaction(async (tx) => {
+      const lastOrder = await tx.purchaseOrder.findFirst({ orderBy: { orderNo: 'desc' } });
+      const lastNum = lastOrder ? parseInt(lastOrder.orderNo.split('-')[1]) : 0;
+      const orderNo = `PO-${String(lastNum + 1).padStart(4, '0')}`;
 
-    const order = await prisma.purchaseOrder.create({
-      data: { orderNo, vendor, vendorEmail, vendorPhone, notes, totalAmount, createdById: req.user.id, items: { create: orderItems } },
-      include: { items: { include: { product: true } } }
+      return tx.purchaseOrder.create({
+        data: { orderNo, vendor, vendorEmail, vendorPhone, notes, totalAmount, createdById: req.user.id, items: { create: orderItems } },
+        include: { items: { include: { product: true } } }
+      });
     });
 
-    await createAuditLog({ userId: req.user.id, action: 'CREATED', model: 'PurchaseOrder', recordId: order.id, description: `Purchase Order ${orderNo} created — vendor: ${vendor}`, purchaseOrderId: order.id });
+    await createAuditLog({ userId: req.user.id, action: 'CREATED', model: 'PurchaseOrder', recordId: order.id, description: `Purchase Order ${order.orderNo} created — vendor: ${vendor} (Total: ₹${totalAmount.toLocaleString('en-IN')})`, purchaseOrderId: order.id });
     res.status(201).json({ success: true, data: order });
   } catch (err) {
     if (err.name === 'ZodError') return res.status(400).json({ success: false, errors: err.errors });
@@ -145,6 +157,25 @@ router.put('/:id', authMiddleware, requireRole('admin', 'purchase'), async (req,
     if (!order || order.status !== 'draft') return res.status(400).json({ success: false, message: 'Can only edit draft orders' });
     const updated = await prisma.purchaseOrder.update({ where: { id: req.params.id }, data: { vendor, vendorEmail, vendorPhone, notes }, include: { items: { include: { product: true } } } });
     res.json({ success: true, data: updated });
+  } catch (err) { next(err); }
+});
+
+// POST /api/purchase/:id/cancel
+router.post('/:id/cancel', authMiddleware, requireRole('admin', 'purchase'), async (req, res, next) => {
+  try {
+    const order = await prisma.purchaseOrder.findUnique({ where: { id: req.params.id } });
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (order.status === 'fully_received') return res.status(400).json({ success: false, message: 'Cannot cancel a fully received order' });
+    if (order.status === 'cancelled') return res.status(400).json({ success: false, message: 'Order already cancelled' });
+
+    const cancelled = await prisma.purchaseOrder.update({
+      where: { id: order.id },
+      data: { status: 'cancelled' },
+      include: { items: { include: { product: true } } }
+    });
+
+    await createAuditLog({ userId: req.user.id, action: 'CANCELLED', model: 'PurchaseOrder', recordId: order.id, description: `Purchase Order ${order.orderNo} cancelled`, purchaseOrderId: order.id });
+    res.json({ success: true, data: cancelled });
   } catch (err) { next(err); }
 });
 

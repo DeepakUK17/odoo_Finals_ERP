@@ -4,8 +4,9 @@ import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard, Package, ShoppingCart, TruckIcon,
   Factory, ClipboardList, FileText, Users, ChevronLeft,
-  ChevronRight, LogOut, Settings
+  ChevronRight, LogOut, BarChart2
 } from 'lucide-react';
+import ProfileModal from './ProfileModal';
 
 // Role-based nav items
 const NAV_ITEMS = [
@@ -18,11 +19,12 @@ const NAV_ITEMS = [
   {
     section: 'Operations',
     items: [
-      { path: '/products',      label: 'Products',       icon: Package,       roles: ['admin','inventory'] },
-      { path: '/sales',         label: 'Sales Orders',   icon: ShoppingCart,  roles: ['admin','sales'] },
-      { path: '/purchase',      label: 'Purchase Orders',icon: TruckIcon,     roles: ['admin','purchase'] },
-      { path: '/manufacturing', label: 'Manufacturing',  icon: Factory,       roles: ['admin','manufacturing'] },
+      { path: '/products',      label: 'Products',         icon: Package,       roles: ['admin','inventory'] },
+      { path: '/sales',         label: 'Sales Orders',     icon: ShoppingCart,  roles: ['admin','sales'] },
+      { path: '/purchase',      label: 'Purchase Orders',  icon: TruckIcon,     roles: ['admin','purchase'] },
+      { path: '/manufacturing', label: 'Manufacturing',    icon: Factory,       roles: ['admin','manufacturing'] },
       { path: '/bom',           label: 'Bill of Materials', icon: ClipboardList, roles: ['admin','manufacturing'] },
+      { path: '/stock',         label: 'Stock Movements',  icon: BarChart2,     roles: ['admin','inventory','manufacturing'] },
     ]
   },
   {
@@ -37,6 +39,7 @@ const NAV_ITEMS = [
 export default function Sidebar({ collapsed, onToggle }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [showProfile, setShowProfile] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -82,8 +85,14 @@ export default function Sidebar({ collapsed, onToggle }) {
       </nav>
 
       {/* User Info */}
-      <div className="sidebar-user">
-        <div className="user-avatar">{initials}</div>
+      <div className="sidebar-user" style={{ cursor: 'pointer' }} onClick={() => setShowProfile(true)} title="Edit Profile">
+        <div className="user-avatar" style={{ overflow: 'hidden' }}>
+          {user?.avatarUrl ? (
+            <img src={user.avatarUrl} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            initials
+          )}
+        </div>
         <div className="user-info">
           <div className="user-name">{user?.name?.split(' ')[0]}</div>
           <div className="user-role">{user?.role}</div>
@@ -98,9 +107,11 @@ export default function Sidebar({ collapsed, onToggle }) {
         </button>
         <button className="toggle-btn" style={{ marginTop: 6 }} onClick={onToggle} title="Toggle sidebar">
           {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-          <span className="nav-item-label">Collapse</span>
+          <span className="nav-item-label">{collapsed ? 'Expand' : 'Collapse'}</span>
         </button>
       </div>
+
+      {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
     </aside>
   );
 }

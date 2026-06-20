@@ -3,7 +3,7 @@ import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import {
   ShoppingCart, TruckIcon, Factory, Package,
-  AlertTriangle, TrendingUp, Activity, Clock
+  AlertTriangle, TrendingUp, Activity, Clock, X
 } from 'lucide-react';
 import {
   Chart as ChartJS, CategoryScale, LinearScale, BarElement,
@@ -48,31 +48,43 @@ export default function Dashboard() {
   const [recentActivity, setRecentActivity] = useState([]);
   const [chartData, setChartData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selectedLog, setSelectedLog] = useState(null);
+  const [forecast, setForecast] = useState([]);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        const [s, ls, ra, cd] = await Promise.all([
+        const [s, ls, ra, cd, fc] = await Promise.all([
           api.get('/dashboard/summary'),
           api.get('/dashboard/low-stock'),
           api.get('/dashboard/recent-activity'),
           api.get('/dashboard/sales-chart'),
+          api.get('/dashboard/digital-twin'),
         ]);
         setSummary(s.data.data || {});
         setLowStock(ls.data.data || []);
         setRecentActivity(ra.data.data || []);
+        setForecast((fc.data.data || []).filter(f => f.daysToStockOut !== null && f.daysToStockOut < 30).sort((a, b) => (a.daysToStockOut || 999) - (b.daysToStockOut || 999)).slice(0, 6));
 
         const days = cd.data.data || [];
         setChartData({
           labels: days.map(d => new Date(d.date).toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' })),
           datasets: [{
-            label: 'Sales Orders',
-            data: days.map(d => d.count),
-            backgroundColor: 'rgba(59,130,246,0.7)',
+            label: 'Revenue (₹)',
+            data: days.map(d => d.revenue || 0),
+            backgroundColor: 'rgba(59,130,246,0.65)',
             borderColor: 'rgba(59,130,246,1)',
             borderWidth: 2,
             borderRadius: 6,
+          }, {
+            label: 'Orders',
+            data: days.map(d => d.count),
+            backgroundColor: 'rgba(139,92,246,0.5)',
+            borderColor: 'rgba(139,92,246,1)',
+            borderWidth: 1,
+            borderRadius: 4,
+            yAxisID: 'y1',
           }]
         });
       } catch (err) { console.error(err); }
@@ -144,13 +156,26 @@ export default function Dashboard() {
           {chartData ? (
             <Bar data={chartData} options={{
               responsive: true,
+              interaction: { mode: 'index', intersect: false },
               plugins: {
-                legend: { display: false },
-                tooltip: { backgroundColor: 'var(--bg-card)', titleColor: 'var(--text-primary)', bodyColor: 'var(--text-secondary)', borderColor: 'var(--border)', borderWidth: 1 }
+                legend: { display: true, labels: { color: '#9ca3af', font: { size: 11 } } },
+                tooltip: {
+                  backgroundColor: '#1e293b',
+                  titleColor: '#ffffff',
+                  bodyColor: '#cbd5e1',
+                  borderColor: '#475569',
+                  borderWidth: 1,
+                  callbacks: {
+                    label: (ctx) => ctx.datasetIndex === 0
+                      ? ` Revenue: ₹${(ctx.raw || 0).toLocaleString('en-IN')}`
+                      : ` Orders: ${ctx.raw}`
+                  }
+                }
               },
               scales: {
-                x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'var(--text-muted)', font: { size: 11 } } },
-                y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'var(--text-muted)', precision: 0 }, beginAtZero: true }
+                x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af', font: { size: 11 } } },
+                y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af', callback: v => `₹${(v/1000).toFixed(0)}K` }, beginAtZero: true, position: 'left' },
+                y1: { display: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#9ca3af', precision: 0 }, beginAtZero: true }
               }
             }} />
           ) : <div className="loading-overlay" style={{ minHeight: 180 }}><div className="spinner" /></div>}
@@ -188,6 +213,43 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Demand Forecast / Digital-Twin Card */}
+      {forecast.length > 0 && (
+        <div className="card" style={{ marginTop: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'hsla(38,92%,50%,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>📈</div>
+            <div>
+              <h3 style={{ fontFamily: 'Outfit', fontSize: 16, fontWeight: 600 }}>Demand Forecast — Stockout Risk</h3>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Products projected to run out within 30 days based on sales velocity</p>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
+            {forecast.map(f => {
+              const urgent = f.daysToStockOut <= 7;
+              const warning = f.daysToStockOut <= 14;
+              const color = urgent ? 'var(--danger)' : warning ? 'var(--warning)' : 'var(--info)';
+              const bg = urgent ? 'var(--danger-bg)' : warning ? 'var(--warning-bg)' : 'var(--info-bg)';
+              return (
+                <div key={f.product.id} style={{ padding: '12px 14px', borderRadius: 10, border: `1px solid ${color}40`, background: bg }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{f.product.name}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+                    <span>On hand: <strong style={{ color: 'var(--text-primary)' }}>{f.product.onHandQty}</strong></span>
+                    <span>Daily demand: <strong style={{ color }}>{f.avgDailyDemand}/day</strong></span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 22, fontWeight: 800, color }}>{f.daysToStockOut}</span>
+                    <div>
+                      <div style={{ fontSize: 11, color, fontWeight: 600 }}>days until stockout</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>at current demand</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Recent Activity */}
       <div className="card" style={{ marginTop: 20 }}>
         <h3 style={{ marginBottom: 16, fontFamily: 'Outfit', fontSize: 16, fontWeight: 600 }}>
@@ -197,7 +259,9 @@ export default function Dashboard() {
           {recentActivity.length === 0 ? (
             <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No recent activity</p>
           ) : recentActivity.slice(0, 8).map(log => (
-            <div key={log.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '10px 12px', background: 'var(--bg-glass)', borderRadius: 8, transition: 'background 0.2s' }}>
+            <div key={log.id} 
+                 onClick={() => setSelectedLog(log)}
+                 style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '10px 12px', background: 'var(--bg-glass)', borderRadius: 8, transition: 'background 0.2s', cursor: 'pointer' }}>
               <span style={{ fontSize: 18, flexShrink: 0 }}>{getActionIcon(log.action)}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 500 }}>
@@ -215,6 +279,42 @@ export default function Dashboard() {
           ))}
         </div>
       </div>
+      
+      {/* Activity Details Modal */}
+      {selectedLog && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setSelectedLog(null)}>
+          <div className="modal modal-md">
+            <div className="modal-header">
+              <h2 className="modal-title">
+                <span style={{ marginRight: 8 }}>{getActionIcon(selectedLog.action)}</span>
+                Activity Details
+              </h2>
+              <button className="modal-close" onClick={() => setSelectedLog(null)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ padding: '0 20px 20px' }}>
+              <div style={{ marginBottom: 16 }}>
+                <span className={`badge badge-${selectedLog.model.toLowerCase()}`} style={{ marginRight: 8 }}>{selectedLog.model}</span>
+                <span className={`badge badge-draft`}>{selectedLog.action}</span>
+              </div>
+              
+              <div style={{ background: 'var(--surface)', padding: 16, borderRadius: 8, border: '1px solid var(--border)', marginBottom: 16 }}>
+                <p style={{ fontSize: 14, lineHeight: 1.5 }}>{selectedLog.description}</p>
+              </div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 13, color: 'var(--text-muted)' }}>
+                <div>
+                  <strong>User:</strong> {selectedLog.user?.name || 'System'}
+                </div>
+                <div>
+                  <strong>Time:</strong> {new Date(selectedLog.timestamp).toLocaleString('en-IN')}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

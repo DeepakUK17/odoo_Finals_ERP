@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import api from '../api/client';
 import { Bot, X, Send } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 
 const QUICK_QUESTIONS = [
   'Why are deliveries delayed?',
@@ -63,7 +64,9 @@ export default function AIAssistant() {
           <div className="ai-messages" ref={messagesRef}>
             {messages.map((m, i) => (
               <div key={i} className={`ai-msg ${m.role}`}>
-                <div className="ai-msg-bubble" style={{ whiteSpace: 'pre-wrap' }}>{m.text}</div>
+                <div className="ai-msg-bubble">
+                  <ReactMarkdown>{m.text}</ReactMarkdown>
+                </div>
               </div>
             ))}
             {loading && (

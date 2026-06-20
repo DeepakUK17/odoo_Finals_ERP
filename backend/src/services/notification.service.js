@@ -1,6 +1,13 @@
 const prisma = require('../lib/prisma');
 
 async function createNotification({ type, title, message, reference, userId = null }) {
+  if (!userId) {
+    const users = await prisma.user.findMany();
+    if (users.length > 0) {
+      const data = users.map(u => ({ type, title, message, reference, userId: u.id }));
+      return prisma.notification.createMany({ data });
+    }
+  }
   return prisma.notification.create({ data: { type, title, message, reference, userId } });
 }
 

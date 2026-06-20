@@ -14,13 +14,16 @@ const productSchema = z.object({
   costPrice: z.number().min(0),
   onHandQty: z.number().min(0).default(0),
   minStockLevel: z.number().min(0).default(10),
+  reorderQty: z.number().min(0).default(0),
   productType: z.enum(['finished', 'component']).default('finished'),
   procurementType: z.enum(['MTS', 'MTO']).default('MTS'),
   procurementRoute: z.enum(['manufacturing', 'purchase']).default('purchase'),
   canBeSold: z.boolean().default(true),
   canBePurchased: z.boolean().default(true),
   canBeManufactured: z.boolean().default(false),
-  unit: z.string().default('units')
+  unit: z.string().default('units'),
+  preferredVendorName: z.string().optional().nullable(),
+  preferredVendorEmail: z.string().email().optional().nullable().or(z.literal(''))
 });
 
 // GET /api/products

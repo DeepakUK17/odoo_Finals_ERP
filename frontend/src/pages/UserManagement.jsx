@@ -3,6 +3,7 @@ import api from '../api/client';
 import { useToast } from '../context/ToastContext';
 import { Users, Plus, Edit2, Trash2, X, Check } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import ConfirmModal from '../components/ConfirmModal';
 
 const ROLES = ['admin', 'sales', 'purchase', 'manufacturing', 'inventory'];
 
@@ -14,8 +15,9 @@ export default function UserManagement() {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState(null);
   
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'sales' });
+  const [form, setForm] = useState({ name: '', email: '', loginId: '', password: '', role: 'sales' });
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -32,13 +34,13 @@ export default function UserManagement() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: '', email: '', password: '', role: 'sales' });
+    setForm({ name: '', email: '', loginId: '', password: '', role: 'sales' });
     setShowModal(true);
   };
 
   const openEdit = (u) => {
     setEditing(u);
-    setForm({ name: u.name, email: u.email, password: '', role: u.role });
+    setForm({ name: u.name, email: u.email, loginId: u.loginId || '', password: '', role: u.role });
     setShowModal(true);
   };
 
@@ -51,7 +53,7 @@ export default function UserManagement() {
     try {
       if (editing) {
         // Send password only if it's changed
-        const payload = { name: form.name, email: form.email, role: form.role };
+        const payload = { name: form.name, email: form.email, loginId: form.loginId, role: form.role };
         if (form.password) payload.password = form.password;
         await api.put(`/auth/users/${editing.id}`, payload);
         toast.success(`User ${form.name} updated`);
@@ -72,19 +74,26 @@ export default function UserManagement() {
       toast.error("You cannot delete yourself.");
       return;
     }
-    if (!confirm(`Are you sure you want to delete ${u.name}?`)) return;
-    
-    try {
-      await api.delete(`/auth/users/${u.id}`);
-      toast.success(`${u.name} deleted`);
-      fetchUsers();
-    } catch (err) {
-      toast.error('Delete failed');
-    }
+    setConfirmDialog({
+      title: 'Delete User',
+      message: `Are you sure you want to delete ${u.name}? This action cannot be undone.`,
+      confirmColor: 'danger',
+      confirmText: 'Delete',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/auth/users/${u.id}`);
+          toast.success(`${u.name} deleted`);
+          fetchUsers();
+        } catch (err) {
+          toast.error('Delete failed');
+        }
+      }
+    });
   };
 
   return (
     <div>
+      <ConfirmModal isOpen={!!confirmDialog} {...confirmDialog} onCancel={() => setConfirmDialog(null)} />
       <div className="page-header">
         <div>
           <h1 className="page-title">👥 User Management</h1>
@@ -111,6 +120,7 @@ export default function UserManagement() {
               <tr>
                 <th>Name</th>
                 <th>Email</th>
+                <th>Login ID</th>
                 <th>Role</th>
                 <th>Created</th>
                 <th>Actions</th>
@@ -123,6 +133,7 @@ export default function UserManagement() {
                     <div style={{ fontWeight: 600 }}>{u.name} {u.id === currentUser.id && '(You)'}</div>
                   </td>
                   <td>{u.email}</td>
+                  <td>{u.loginId || <span style={{color: 'var(--text-muted)'}}>No Login ID</span>}</td>
                   <td><span className={`badge badge-${u.role}`}>{u.role}</span></td>
                   <td style={{ fontSize: 13, color: 'var(--text-muted)' }}>
                     {new Date(u.createdAt).toLocaleDateString('en-IN')}
@@ -176,6 +187,16 @@ export default function UserManagement() {
                 value={form.email} 
                 onChange={e => setForm(f => ({ ...f, email: e.target.value }))} 
                 placeholder="john@example.com" 
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Login ID</label>
+              <input 
+                className="form-input" 
+                value={form.loginId} 
+                onChange={e => setForm(f => ({ ...f, loginId: e.target.value }))} 
+                placeholder="Unique Username" 
               />
             </div>
 

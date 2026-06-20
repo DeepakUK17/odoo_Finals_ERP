@@ -1,29 +1,54 @@
 import { useState, useEffect } from 'react';
 import api from '../api/client';
 import { useToast } from '../context/ToastContext';
-import { Plus, Check, X, PackageCheck } from 'lucide-react';
+import { Plus, Check, X, PackageCheck, Search as SearchIcon, Filter, Download, XCircle } from 'lucide-react';
+import { exportToCSV } from '../utils/export';
+import ConfirmModal from '../components/ConfirmModal';
 
 export default function Purchase() {
   const toast = useToast();
   const [orders, setOrders] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const LIMIT = 50;
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showReceive, setShowReceive] = useState(null);
   const [statusFilter, setStatusFilter] = useState('');
+  const [searchFilter, setSearchFilter] = useState('');
+  const [dateFilter, setDateFilter] = useState('all');
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ vendor: '', vendorEmail: '', vendorPhone: '', notes: '', items: [{ productId: '', qty: 1, unitPrice: 0 }] });
   const [receipts, setReceipts] = useState([]);
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
-  const fetchOrders = async () => {
+  const fetchOrders = async (reset = false) => {
     setLoading(true);
     try {
-      const params = statusFilter ? { status: statusFilter } : {};
+      const currentPage = reset ? 0 : page;
+      const params = { limit: LIMIT, offset: currentPage * LIMIT };
+      if (statusFilter) params.status = statusFilter;
       const { data } = await api.get('/purchase', { params });
-      setOrders(data.data || []);
+      
+      if (reset) {
+        setOrders(data.data || []);
+      } else {
+        setOrders(prev => {
+          const existingIds = new Set(prev.map(o => o.id));
+          const newOrders = (data.data || []).filter(o => !existingIds.has(o.id));
+          return [...prev, ...newOrders];
+        });
+      }
+      setTotal(data.total || 0);
     } catch { toast.error('Failed to load purchase orders'); }
     setLoading(false);
   };
+
+  const reload = () => { setPage(0); fetchOrders(true); };
+
+  useEffect(() => { reload(); }, [statusFilter]);
+  useEffect(() => { if (page > 0) fetchOrders(); }, [page]);
 
   const fetchProducts = async () => {
     try {
@@ -32,7 +57,7 @@ export default function Purchase() {
     } catch {}
   };
 
-  useEffect(() => { fetchOrders(); fetchProducts(); }, [statusFilter]);
+  useEffect(() => { fetchProducts(); }, []);
 
   const addItem = () => setForm(f => ({ ...f, items: [...f.items, { productId: '', qty: 1, unitPrice: 0 }] }));
   const removeItem = (i) => setForm(f => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }));
@@ -58,8 +83,11 @@ export default function Purchase() {
       toast.success('Purchase order created!');
       setShowCreate(false);
       setForm({ vendor: '', vendorEmail: '', vendorPhone: '', notes: '', items: [{ productId: '', qty: 1, unitPrice: 0 }] });
-      fetchOrders();
-    } catch (err) { toast.error(err.response?.data?.message || 'Create failed'); }
+      reload();
+    } catch (err) { 
+      const msg = err.response?.data?.errors?.[0]?.message || err.response?.data?.message || 'Create failed';
+      toast.error(msg); 
+    }
     setSaving(false);
   };
 
@@ -67,7 +95,7 @@ export default function Purchase() {
     try {
       await api.post(`/purchase/${id}/confirm`);
       toast.success(`${orderNo} confirmed — sent to vendor`);
-      fetchOrders();
+      reload();
     } catch (err) { toast.error(err.response?.data?.message || 'Confirm failed'); }
   };
 
@@ -82,9 +110,24 @@ export default function Purchase() {
       await api.post(`/purchase/${showReceive.id}/receive`, { receipts: receipts.map(r => ({ itemId: r.itemId, receivedQty: parseFloat(r.receivedQty) || 0 })) });
       toast.success('Receipt recorded — stock updated!');
       setShowReceive(null);
-      fetchOrders();
+      reload();
     } catch (err) { toast.error(err.response?.data?.message || 'Receipt failed'); }
     setSaving(false);
+  };
+
+  const handleCancel = (id, orderNo) => {
+    setConfirmDialog({
+      title: 'Cancel Order',
+      message: `Cancel ${orderNo}? This cannot be undone.`,
+      confirmColor: 'danger',
+      onConfirm: async () => {
+        try {
+          await api.post(`/purchase/${id}/cancel`);
+          toast.success(`${orderNo} cancelled`);
+          reload();
+        } catch (err) { toast.error(err.response?.data?.message || 'Cancel failed'); }
+      }
+    });
   };
 
   const getFlowSteps = (status) => [
@@ -94,24 +137,75 @@ export default function Purchase() {
     { key: 'fully_received', label: 'Received', state: status === 'fully_received' ? 'done' : 'pending' },
   ];
 
+  const filteredOrders = orders.filter(o => {
+    if (searchFilter) {
+      const q = searchFilter.toLowerCase();
+      if (!o.orderNo.toLowerCase().includes(q) && !o.vendor?.toLowerCase().includes(q)) return false;
+    }
+    if (dateFilter !== 'all') {
+      const orderDate = new Date(o.createdAt);
+      const now = new Date();
+      if (dateFilter === '7days' && (now - orderDate) > 7 * 24 * 60 * 60 * 1000) return false;
+      if (dateFilter === '30days' && (now - orderDate) > 30 * 24 * 60 * 60 * 1000) return false;
+    }
+    return true;
+  });
+
+  const handleExport = () => {
+    const data = filteredOrders.map(o => ({
+      OrderNo: o.orderNo,
+      Vendor: o.vendor,
+      Status: o.status,
+      TotalAmount: o.totalAmount,
+      Date: new Date(o.createdAt).toLocaleString('en-IN')
+    }));
+    exportToCSV(data, 'Purchase_Orders');
+  };
+
   return (
     <div>
+      <ConfirmModal isOpen={!!confirmDialog} {...confirmDialog} onCancel={() => setConfirmDialog(null)} />
       <div className="page-header">
         <div>
           <h1 className="page-title">🛒 Purchase Orders</h1>
           <p className="page-subtitle">Manage vendor orders and stock receipts</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowCreate(true)} id="create-po-btn">
-          <Plus size={16} /> New Order
-        </button>
+        <div className="page-actions" style={{ display: 'flex', gap: 10 }}>
+          <button className="btn btn-secondary" onClick={handleExport} title="Export to CSV" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Download size={16} /> Export
+          </button>
+          <button className="btn btn-primary" onClick={() => setShowCreate(true)} id="create-po-btn">
+            <Plus size={16} /> New Order
+          </button>
+        </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        {['', 'draft', 'confirmed', 'partially_received', 'fully_received'].map(s => (
-          <button key={s} className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setStatusFilter(s)}>
-            {s ? s.replace(/_/g, ' ') : 'All'}
-          </button>
-        ))}
+      <div className="table-toolbar" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16 }}>
+        <div className="table-search" style={{ flex: 1, minWidth: 200 }}>
+          <SearchIcon size={15} color="var(--text-muted)" />
+          <input
+            placeholder="Search by Order No or Vendor..."
+            value={searchFilter}
+            onChange={e => setSearchFilter(e.target.value)}
+          />
+        </div>
+        
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <Filter size={15} color="var(--text-muted)" />
+          <select className="form-select" style={{ width: 'auto', padding: '6px 24px 6px 12px', height: 32 }} value={dateFilter} onChange={e => setDateFilter(e.target.value)}>
+            <option value="all">All Time</option>
+            <option value="7days">Last 7 Days</option>
+            <option value="30days">Last 30 Days</option>
+          </select>
+        </div>
+
+        <div style={{ display: 'flex', gap: 4 }}>
+          {['', 'draft', 'confirmed', 'partially_received', 'fully_received'].map(s => (
+            <button key={s} className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setStatusFilter(s)}>
+              {s ? s.replace(/_/g, ' ') : 'All Status'}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="table-wrapper">
@@ -134,7 +228,7 @@ export default function Purchase() {
                 </tr>
               </thead>
               <tbody>
-                {orders.map(o => (
+                {filteredOrders.map(o => (
                   <tr key={o.id}>
                     <td><strong style={{ color: 'var(--primary-light)' }}>{o.orderNo}</strong></td>
                     <td>
@@ -164,6 +258,11 @@ export default function Purchase() {
                         {['confirmed', 'partially_received'].includes(o.status) && (
                           <button className="btn btn-sm btn-primary" onClick={() => openReceive(o)} title="Receive Stock"><PackageCheck size={14} /></button>
                         )}
+                        {!['fully_received', 'cancelled'].includes(o.status) && (
+                          <button className="btn btn-sm btn-danger" onClick={() => handleCancel(o.id, o.orderNo)} title="Cancel Order">
+                            <XCircle size={14} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -171,6 +270,11 @@ export default function Purchase() {
               </tbody>
             </table>
           )
+        )}
+        {orders.length < total && !loading && (
+          <div style={{ padding: '12px 16px', textAlign: 'center', borderTop: '1px solid var(--border)' }}>
+            <button className="btn btn-secondary" onClick={() => setPage(p => p + 1)}>Load More</button>
+          </div>
         )}
       </div>
 

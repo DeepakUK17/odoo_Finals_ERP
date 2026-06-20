@@ -86,7 +86,7 @@ router.get('/recent-activity', authMiddleware, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/dashboard/sales-chart — last 7 days
+// GET /api/dashboard/sales-chart — last 7 days revenue
 router.get('/sales-chart', authMiddleware, async (req, res, next) => {
   try {
     const days = [];
@@ -95,8 +95,12 @@ router.get('/sales-chart', authMiddleware, async (req, res, next) => {
       d.setDate(d.getDate() - i);
       d.setHours(0, 0, 0, 0);
       const next = new Date(d); next.setDate(next.getDate() + 1);
-      const count = await prisma.salesOrder.count({ where: { createdAt: { gte: d, lt: next } } });
-      days.push({ date: d.toISOString().split('T')[0], count });
+      const [orders, count] = await Promise.all([
+        prisma.salesOrder.findMany({ where: { createdAt: { gte: d, lt: next } }, select: { totalAmount: true } }),
+        prisma.salesOrder.count({ where: { createdAt: { gte: d, lt: next } } })
+      ]);
+      const revenue = orders.reduce((s, o) => s + (o.totalAmount || 0), 0);
+      days.push({ date: d.toISOString().split('T')[0], count, revenue });
     }
     res.json({ success: true, data: days });
   } catch (err) { next(err); }

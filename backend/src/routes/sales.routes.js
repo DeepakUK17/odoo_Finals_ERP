@@ -5,15 +5,11 @@ const prisma = require('../lib/prisma');
 const authMiddleware = require('../middleware/auth.middleware');
 const requireRole = require('../middleware/role.middleware');
 const { createAuditLog } = require('../services/audit.service');
-const { triggerProcurement } = require('../services/procurement.service');
 const { updateStock } = require('../services/stock.service');
+const { createNotificationsForLowStock } = require('../services/notification.service');
+const { triggerProcurement, triggerAutoReorder } = require('../services/procurement.service');
 const { createNotification } = require('../services/notification.service');
 
-let soCounter = 1;
-const generateOrderNo = () => {
-  const no = String(soCounter++).padStart(4, '0');
-  return `SO-${no}`;
-};
 
 const soSchema = z.object({
   customer: z.string().min(1),
@@ -30,15 +26,24 @@ const soSchema = z.object({
 // GET /api/sales
 router.get('/', authMiddleware, requireRole('admin', 'sales'), async (req, res, next) => {
   try {
-    const { status } = req.query;
+    const { status, limit, offset } = req.query;
     const where = {};
     if (status) where.status = status;
-    const orders = await prisma.salesOrder.findMany({
-      where,
-      include: { items: { include: { product: { select: { id: true, name: true, unit: true } } } }, createdBy: { select: { name: true } } },
-      orderBy: { createdAt: 'desc' }
-    });
-    res.json({ success: true, data: orders });
+    
+    const take = limit ? parseInt(limit) : 50;
+    const skip = offset ? parseInt(offset) : 0;
+
+    const [orders, total] = await Promise.all([
+      prisma.salesOrder.findMany({
+        where,
+        include: { items: { include: { product: { select: { id: true, name: true, unit: true, onHandQty: true } } } }, createdBy: { select: { name: true } } },
+        orderBy: { createdAt: 'desc' },
+        take,
+        skip
+      }),
+      prisma.salesOrder.count({ where })
+    ]);
+    res.json({ success: true, data: orders, total });
   } catch (err) { next(err); }
 });
 
@@ -74,26 +79,28 @@ router.post('/', authMiddleware, requireRole('admin', 'sales'), async (req, res,
     }));
     const totalAmount = orderItems.reduce((s, i) => s + i.totalPrice, 0);
 
-    // Find next order number
-    const lastOrder = await prisma.salesOrder.findFirst({ orderBy: { createdAt: 'desc' } });
-    const lastNum = lastOrder ? parseInt(lastOrder.orderNo.split('-')[1]) : 0;
-    const orderNo = `SO-${String(lastNum + 1).padStart(4, '0')}`;
+    // Atomic order number generation inside a transaction to prevent race conditions
+    const order = await prisma.$transaction(async (tx) => {
+      const lastOrder = await tx.salesOrder.findFirst({ orderBy: { orderNo: 'desc' } });
+      const lastNum = lastOrder ? parseInt(lastOrder.orderNo.split('-')[1]) : 0;
+      const orderNo = `SO-${String(lastNum + 1).padStart(4, '0')}`;
 
-    const order = await prisma.salesOrder.create({
-      data: {
-        orderNo,
-        customer,
-        customerEmail,
-        customerPhone,
-        notes,
-        totalAmount,
-        createdById: req.user.id,
-        items: { create: orderItems }
-      },
-      include: { items: { include: { product: true } } }
+      return tx.salesOrder.create({
+        data: {
+          orderNo,
+          customer,
+          customerEmail,
+          customerPhone,
+          notes,
+          totalAmount,
+          createdById: req.user.id,
+          items: { create: orderItems }
+        },
+        include: { items: { include: { product: true } } }
+      });
     });
 
-    await createAuditLog({ userId: req.user.id, action: 'CREATED', model: 'SalesOrder', recordId: order.id, description: `Sales Order ${orderNo} created for ${customer}`, salesOrderId: order.id });
+    await createAuditLog({ userId: req.user.id, action: 'CREATED', model: 'SalesOrder', recordId: order.id, description: `Sales Order ${order.orderNo} created for ${customer} (Total: ₹${totalAmount.toLocaleString('en-IN')})`, salesOrderId: order.id });
     res.status(201).json({ success: true, data: order });
   } catch (err) {
     if (err.name === 'ZodError') return res.status(400).json({ success: false, errors: err.errors });
@@ -118,36 +125,28 @@ router.post('/:id/confirm', authMiddleware, requireRole('admin', 'sales'), async
       const product = item.product;
       const freeToUse = Math.max(0, product.onHandQty - product.reservedQty);
 
-      if (product.procurementType === 'MTS' && freeToUse >= item.qty) {
-        // MTS with sufficient stock → just reserve
-        await prisma.product.update({
-          where: { id: product.id },
-          data: { reservedQty: { increment: item.qty } }
-        });
-        await prisma.salesOrderItem.update({
-          where: { id: item.id },
-          data: { reservedQty: item.qty }
-        });
-      } else {
-        // MTO OR insufficient MTS stock → trigger procurement for shortage
-        const shortage = item.qty - freeToUse;
-        const canReserveNow = Math.max(0, freeToUse);
+      // ALWAYS reserve the full required quantity immediately
+      const updatedProd = await prisma.product.update({
+        where: { id: product.id },
+        data: { reservedQty: { increment: item.qty } }
+      });
+      await prisma.salesOrderItem.update({
+        where: { id: item.id },
+        data: { reservedQty: item.qty }
+      });
 
-        if (canReserveNow > 0) {
-          await prisma.product.update({
-            where: { id: product.id },
-            data: { reservedQty: { increment: canReserveNow } }
-          });
-          await prisma.salesOrderItem.update({
-            where: { id: item.id },
-            data: { reservedQty: canReserveNow }
-          });
-        }
+      // Determine shortage to auto-procure
+      const shortage = product.procurementType === 'MTO' ? item.qty : Math.max(0, item.qty - freeToUse);
 
-        if (shortage > 0) {
-          const result = await triggerProcurement(product, shortage, order.id, order.orderNo, req.user.id);
-          procurementActions.push(result);
-        }
+      if (shortage > 0) {
+        const result = await triggerProcurement(product, shortage, order.id, order.orderNo, req.user.id);
+        procurementActions.push(result);
+      }
+      
+      // Min-Max Auto Reorder Check based on true freeToUse
+      const trueFreeToUse = updatedProd.onHandQty - updatedProd.reservedQty;
+      if (trueFreeToUse <= updatedProd.minStockLevel) {
+        await triggerAutoReorder(updatedProd, req.user.id);
       }
     }
 
@@ -179,6 +178,7 @@ router.post('/:id/deliver', authMiddleware, requireRole('admin', 'sales'), async
       return res.status(400).json({ success: false, message: 'Order must be confirmed before delivery' });
     }
 
+    // Pre-check stock levels
     for (const d of deliveries) {
       const item = order.items.find(i => i.id === d.itemId);
       if (!item) continue;
@@ -186,14 +186,39 @@ router.post('/:id/deliver', authMiddleware, requireRole('admin', 'sales'), async
       const toDeliver = Math.min(d.deliveredQty, maxDeliverable);
       if (toDeliver <= 0) continue;
 
+      if (item.product.onHandQty < toDeliver) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `Insufficient stock for ${item.product.name}. You are trying to deliver ${toDeliver}, but only ${item.product.onHandQty} are in stock. Please manufacture or purchase more first.` 
+        });
+      }
+    }
+
+    for (const d of deliveries) {
+      const item = order.items.find(i => i.id === d.itemId);
+      if (!item) continue;
+      const maxDeliverable = item.qty - item.deliveredQty;
+      const toDeliver = Math.min(d.deliveredQty, maxDeliverable);
+      if (toDeliver <= 0) continue;
+
+      const reservedToDeduct = Math.max(0, Math.min(toDeliver, item.reservedQty));
+
       // Update item
       await prisma.salesOrderItem.update({
         where: { id: item.id },
         data: {
           deliveredQty: { increment: toDeliver },
-          reservedQty: { decrement: toDeliver }
+          reservedQty: { decrement: reservedToDeduct }
         }
       });
+
+      // Update product reservedQty
+      if (reservedToDeduct > 0) {
+        await prisma.product.update({
+          where: { id: item.productId },
+          data: { reservedQty: { decrement: reservedToDeduct } }
+        });
+      }
 
       // Deduct from stock
       await updateStock(item.productId, -toDeliver, 'sale_delivery', order.orderNo, `Delivery for ${order.orderNo} — ${item.product.name}`);

@@ -15,40 +15,51 @@ router.post('/chat', authMiddleware, async (req, res, next) => {
       return res.status(503).json({ success: false, message: 'AI assistant not configured. Add GEMINI_API_KEY to .env' });
     }
 
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    
     // Gather real-time business context from DB
     const [products, salesOrders, purchaseOrders, manufacturingOrders, lowStock, recentLogs] = await Promise.all([
-      prisma.product.findMany({ where: { isActive: true }, select: { name: true, onHandQty: true, reservedQty: true, minStockLevel: true, productType: true, procurementType: true } }),
-      prisma.salesOrder.findMany({ where: { status: { in: ['confirmed', 'partially_delivered'] } }, include: { items: { include: { product: { select: { name: true } } } } }, take: 10 }),
-      prisma.purchaseOrder.findMany({ where: { status: { in: ['draft', 'confirmed', 'partially_received'] } }, take: 5 }),
-      prisma.manufacturingOrder.findMany({ where: { status: { in: ['draft', 'confirmed', 'in_progress'] } }, include: { product: { select: { name: true } } }, take: 5 }),
+      prisma.product.findMany({ where: { isActive: true }, select: { name: true, onHandQty: true, reservedQty: true, minStockLevel: true, productType: true, procurementType: true, salesPrice: true, costPrice: true } }),
+      prisma.salesOrder.findMany({ orderBy: { createdAt: 'desc' }, include: { items: { include: { product: { select: { name: true } } } } }, take: 30 }),
+      prisma.purchaseOrder.findMany({ orderBy: { createdAt: 'desc' }, take: 20 }),
+      prisma.manufacturingOrder.findMany({ orderBy: { createdAt: 'desc' }, include: { product: { select: { name: true } } }, take: 20 }),
       prisma.product.findMany({ where: { isActive: true } }).then(ps => ps.filter(p => p.onHandQty <= p.minStockLevel)),
-      prisma.auditLog.findMany({ orderBy: { timestamp: 'desc' }, take: 5, select: { action: true, model: true, description: true } })
+      prisma.auditLog.findMany({ orderBy: { timestamp: 'desc' }, take: 15, select: { action: true, model: true, description: true } })
     ]);
 
     const context = `
 You are an AI Business Assistant for Shiv Furniture Works, a furniture manufacturing ERP system. 
 You have access to real-time business data. Be concise, actionable, and specific.
+Today's Date: ${new Date().toLocaleDateString('en-IN')}
+
+=== USER ROLE ===
+The user asking the question has the role: "${req.user.role}".
+ROLE-BASED RESTRICTIONS:
+- If the role is "sales", DO NOT reveal profit, cost price, procurement costs, or financial details of manufacturing under any circumstances. You must politely refuse such requests.
+- If the role is "inventory", focus on stock levels.
+- If the role is "admin", you have full unrestricted access to all data including profits and costs.
 
 === CURRENT INVENTORY ===
-${products.map(p => `${p.name}: ${p.onHandQty} on hand, ${p.reservedQty} reserved, free-to-use: ${Math.max(0, p.onHandQty - p.reservedQty)}, min level: ${p.minStockLevel}`).join('\n')}
+${products.map(p => `${p.name}: ${p.onHandQty} on hand, ${p.reservedQty} reserved, free-to-use: ${Math.max(0, p.onHandQty - p.reservedQty)}, min level: ${p.minStockLevel}${req.user.role === 'admin' ? `, Cost: ₹${p.costPrice}, Sale: ₹${p.salesPrice}` : ''}`).join('\n')}
 
 === LOW STOCK ALERTS ===
 ${lowStock.length > 0 ? lowStock.map(p => `⚠ ${p.name}: only ${p.onHandQty} remaining`).join('\n') : 'No low stock items'}
 
-=== PENDING SALES ORDERS ===
-${salesOrders.length > 0 ? salesOrders.map(o => `${o.orderNo} for ${o.customer} (${o.status}): ${o.items.map(i => `${i.qty}×${i.product.name}`).join(', ')}`).join('\n') : 'No pending sales orders'}
+=== RECENT SALES ORDERS (Last 30) ===
+${salesOrders.length > 0 ? salesOrders.map(o => `${o.orderNo} for ${o.customer} on ${o.createdAt.toLocaleDateString()} (${o.status}): ${o.items.map(i => `${i.qty}×${i.product?.name || 'Item'}`).join(', ')}`).join('\n') : 'No recent sales orders'}
 
-=== ACTIVE PURCHASE ORDERS ===
-${purchaseOrders.length > 0 ? purchaseOrders.map(o => `${o.orderNo} from ${o.vendor} (${o.status})`).join('\n') : 'No active purchase orders'}
+=== RECENT PURCHASE ORDERS (Last 20) ===
+${purchaseOrders.length > 0 ? purchaseOrders.map(o => `${o.orderNo} from ${o.vendor} on ${o.createdAt.toLocaleDateString()} (${o.status})`).join('\n') : 'No recent purchase orders'}
 
-=== ACTIVE MANUFACTURING ORDERS ===
-${manufacturingOrders.length > 0 ? manufacturingOrders.map(o => `${o.orderNo}: ${o.qty}×${o.product.name} (${o.status})`).join('\n') : 'No active manufacturing orders'}
+=== RECENT MANUFACTURING ORDERS (Last 20) ===
+${manufacturingOrders.length > 0 ? manufacturingOrders.map(o => `${o.orderNo} on ${o.createdAt.toLocaleDateString()}: ${o.qty}×${o.product?.name || 'Item'} (${o.status})`).join('\n') : 'No recent manufacturing orders'}
 
 === RECENT ACTIVITY ===
 ${recentLogs.map(l => `${l.action} on ${l.model}: ${l.description}`).join('\n')}
 `;
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     const result = await model.generateContent(`${context}\n\nUser Question: ${message}\n\nProvide a clear, actionable answer based on the data above.`);
     const text = result.response.text();
 

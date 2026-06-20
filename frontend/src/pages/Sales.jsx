@@ -1,36 +1,64 @@
 import { useState, useEffect } from 'react';
 import api from '../api/client';
 import { useToast } from '../context/ToastContext';
-import { Plus, Eye, Check, X, Truck, ChevronDown } from 'lucide-react';
+import { Plus, Eye, Check, X, Truck, ChevronDown, Search as SearchIcon, Filter, Download, Printer } from 'lucide-react';
+import { exportToCSV } from '../utils/export';
+import ConfirmModal from '../components/ConfirmModal';
 
 const STATUS_ORDER = ['draft', 'confirmed', 'partially_delivered', 'fully_delivered', 'cancelled'];
 
 export default function Sales() {
   const toast = useToast();
   const [orders, setOrders] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const LIMIT = 50;
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showDetail, setShowDetail] = useState(null);
   const [showDeliver, setShowDeliver] = useState(null);
   const [statusFilter, setStatusFilter] = useState('');
+  const [searchFilter, setSearchFilter] = useState('');
+  const [dateFilter, setDateFilter] = useState('all');
   const [saving, setSaving] = useState(false);
   const [procResult, setProcResult] = useState(null);
+  const [printData, setPrintData] = useState(null);
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
   // Create form
   const [form, setForm] = useState({ customer: '', customerEmail: '', customerPhone: '', notes: '', items: [{ productId: '', qty: 1, unitPrice: 0 }] });
   // Deliver form
   const [deliveries, setDeliveries] = useState([]);
 
-  const fetchOrders = async () => {
+  const fetchOrders = async (reset = false) => {
     setLoading(true);
     try {
-      const params = statusFilter ? { status: statusFilter } : {};
+      const currentPage = reset ? 0 : page;
+      const params = { limit: LIMIT, offset: currentPage * LIMIT };
+      if (statusFilter) params.status = statusFilter;
+      
       const { data } = await api.get('/sales', { params });
-      setOrders(data.data || []);
+      
+      if (reset) {
+        setOrders(data.data || []);
+      } else {
+        // Append new orders without duplicates
+        setOrders(prev => {
+          const existingIds = new Set(prev.map(o => o.id));
+          const newOrders = (data.data || []).filter(o => !existingIds.has(o.id));
+          return [...prev, ...newOrders];
+        });
+      }
+      setTotal(data.total || 0);
     } catch { toast.error('Failed to load sales orders'); }
     setLoading(false);
   };
+
+  const reload = () => { setPage(0); fetchOrders(true); };
+
+  useEffect(() => { reload(); }, [statusFilter]);
+  useEffect(() => { if (page > 0) fetchOrders(); }, [page]);
 
   const fetchProducts = async () => {
     try {
@@ -39,7 +67,7 @@ export default function Sales() {
     } catch {}
   };
 
-  useEffect(() => { fetchOrders(); fetchProducts(); }, [statusFilter]);
+  useEffect(() => { fetchProducts(); }, []);
 
   const addItem = () => setForm(f => ({ ...f, items: [...f.items, { productId: '', qty: 1, unitPrice: 0 }] }));
   const removeItem = (i) => setForm(f => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }));
@@ -65,7 +93,7 @@ export default function Sales() {
       toast.success('Sales order created!');
       setShowCreate(false);
       setForm({ customer: '', customerEmail: '', customerPhone: '', notes: '', items: [{ productId: '', qty: 1, unitPrice: 0 }] });
-      fetchOrders();
+      reload();
     } catch (err) { toast.error(err.response?.data?.message || 'Create failed'); }
     setSaving(false);
   };
@@ -73,37 +101,58 @@ export default function Sales() {
   const handleConfirm = async (id, orderNo) => {
     try {
       const { data } = await api.post(`/sales/${id}/confirm`);
-      toast.success(`${orderNo} confirmed!`);
-      if (data.procurementActions?.length > 0) {
-        setProcResult({ orderNo, actions: data.procurementActions });
+      if (data.shortages?.length > 0) {
+        toast.warning(`${orderNo} confirmed, but some items lack stock (MTO triggered).`);
+        setProcResult(data);
+      } else {
+        toast.success(`${orderNo} confirmed — stock reserved`);
       }
-      fetchOrders();
+      reload();
     } catch (err) { toast.error(err.response?.data?.message || 'Confirm failed'); }
   };
 
   const openDeliver = (order) => {
     setShowDeliver(order);
-    setDeliveries(order.items.map(i => ({ itemId: i.id, deliveredQty: i.qty - i.deliveredQty, max: i.qty - i.deliveredQty, name: i.product?.name })));
+    setDeliveries(order.items.map(i => ({ 
+      itemId: i.id, 
+      deliveredQty: Math.max(0, Math.min(i.qty - i.deliveredQty, i.product?.onHandQty || 0)), 
+      max: i.qty - i.deliveredQty, 
+      name: i.product?.name,
+      onHand: i.product?.onHandQty || 0
+    })));
   };
 
   const handleDeliver = async () => {
     setSaving(true);
     try {
       await api.post(`/sales/${showDeliver.id}/deliver`, { deliveries: deliveries.map(d => ({ itemId: d.itemId, deliveredQty: parseFloat(d.deliveredQty) || 0 })) });
-      toast.success('Delivery recorded!');
+      toast.success(`Delivered items for ${showDeliver.orderNo}`);
       setShowDeliver(null);
-      fetchOrders();
+      reload();
     } catch (err) { toast.error(err.response?.data?.message || 'Delivery failed'); }
     setSaving(false);
   };
 
-  const handleCancel = async (id, orderNo) => {
-    if (!confirm(`Cancel ${orderNo}?`)) return;
-    try {
-      await api.post(`/sales/${id}/cancel`);
-      toast.success(`${orderNo} cancelled`);
-      fetchOrders();
-    } catch (err) { toast.error(err.response?.data?.message || 'Cancel failed'); }
+  const handleCancel = (id, orderNo) => {
+    setConfirmDialog({
+      title: 'Cancel Order',
+      message: `Cancel Sales Order ${orderNo}?`,
+      confirmColor: 'danger',
+      onConfirm: async () => {
+        try {
+          await api.post(`/sales/${id}/cancel`);
+          toast.success(`${orderNo} cancelled`);
+          reload();
+        } catch { toast.error('Failed to cancel order'); }
+      }
+    });
+  };
+
+  const handlePrint = (order) => {
+    setPrintData(order);
+    setTimeout(() => {
+      window.print();
+    }, 150);
   };
 
   const getFlowSteps = (status) => {
@@ -120,27 +169,76 @@ export default function Sales() {
     }));
   };
 
+  const filteredOrders = orders.filter(o => {
+    if (searchFilter) {
+      const q = searchFilter.toLowerCase();
+      if (!o.orderNo.toLowerCase().includes(q) && !o.customer.toLowerCase().includes(q)) return false;
+    }
+    if (dateFilter !== 'all') {
+      const orderDate = new Date(o.createdAt);
+      const now = new Date();
+      if (dateFilter === '7days' && (now - orderDate) > 7 * 24 * 60 * 60 * 1000) return false;
+      if (dateFilter === '30days' && (now - orderDate) > 30 * 24 * 60 * 60 * 1000) return false;
+    }
+    return true;
+  });
+
+  const handleExport = () => {
+    const data = filteredOrders.map(o => ({
+      OrderNo: o.orderNo,
+      Customer: o.customer,
+      Status: o.status,
+      TotalAmount: o.totalAmount,
+      Date: new Date(o.createdAt).toLocaleString('en-IN')
+    }));
+    exportToCSV(data, 'Sales_Orders');
+  };
+
   return (
     <div>
+      <ConfirmModal isOpen={!!confirmDialog} {...confirmDialog} onCancel={() => setConfirmDialog(null)} />
       <div className="page-header">
         <div>
           <h1 className="page-title">🛒 Sales Orders</h1>
           <p className="page-subtitle">Manage customer orders and deliveries</p>
         </div>
         <div className="page-actions">
+          <button className="btn btn-secondary" onClick={handleExport} title="Export to CSV" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Download size={16} /> Export
+          </button>
           <button className="btn btn-primary" onClick={() => setShowCreate(true)} id="create-so-btn">
             <Plus size={16} /> New Order
           </button>
         </div>
       </div>
 
-      {/* Status filter */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        {['', 'draft', 'confirmed', 'partially_delivered', 'fully_delivered', 'cancelled'].map(s => (
-          <button key={s} className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setStatusFilter(s)}>
-            {s ? s.replace(/_/g, ' ') : 'All'}
-          </button>
-        ))}
+      {/* Filter Bar */}
+      <div className="table-toolbar" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="table-search" style={{ flex: 1, minWidth: 200 }}>
+          <SearchIcon size={15} color="var(--text-muted)" />
+          <input
+            placeholder="Search by Order No or Customer..."
+            value={searchFilter}
+            onChange={e => setSearchFilter(e.target.value)}
+          />
+        </div>
+        
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <Filter size={15} color="var(--text-muted)" />
+          <select className="form-select" style={{ width: 'auto', padding: '6px 24px 6px 12px', height: 32 }} value={dateFilter} onChange={e => setDateFilter(e.target.value)}>
+            <option value="all">All Time</option>
+            <option value="7days">Last 7 Days</option>
+            <option value="30days">Last 30 Days</option>
+          </select>
+        </div>
+
+        <div style={{ display: 'flex', gap: 4 }}>
+          {['', 'draft', 'confirmed', 'partially_delivered', 'fully_delivered', 'cancelled'].map(s => (
+            <button key={s} className={`btn btn-sm ${statusFilter === s ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setStatusFilter(s)}>
+              {s ? s.replace(/_/g, ' ') : 'All Status'}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="table-wrapper">
@@ -162,7 +260,7 @@ export default function Sales() {
                 </tr>
               </thead>
               <tbody>
-                {orders.map(o => (
+                {filteredOrders.map(o => (
                   <tr key={o.id}>
                     <td><strong style={{ color: 'var(--primary-light)' }}>{o.orderNo}</strong></td>
                     <td>
@@ -194,6 +292,7 @@ export default function Sales() {
                         {!['fully_delivered', 'cancelled'].includes(o.status) && (
                           <button className="btn btn-sm btn-danger" onClick={() => handleCancel(o.id, o.orderNo)} title="Cancel"><X size={14} /></button>
                         )}
+                        <button className="btn btn-sm btn-secondary" onClick={() => handlePrint(o)} title="Print Invoice"><Printer size={14} /></button>
                       </div>
                     </td>
                   </tr>
@@ -201,6 +300,11 @@ export default function Sales() {
               </tbody>
             </table>
           )
+        )}
+        {orders.length < total && !loading && (
+          <div style={{ padding: '12px 16px', textAlign: 'center', borderTop: '1px solid var(--border)' }}>
+            <button className="btn btn-secondary" onClick={() => setPage(p => p + 1)}>Load More</button>
+          </div>
         )}
       </div>
 
@@ -276,11 +380,12 @@ export default function Sales() {
             </div>
             {deliveries.map((d, i) => (
               <div key={d.itemId} className="form-group">
-                <label className="form-label">{d.name} (max: {d.max})</label>
+                <label className="form-label">{d.name} (Required: {d.max}, Stock: <span style={{color: d.onHand < d.max ? 'var(--danger)' : 'var(--success)'}}>{d.onHand}</span>)</label>
                 <input
                   className="form-input"
-                  type="number" min="0" max={d.max}
+                  type="number" min="0" max={Math.min(d.max, d.onHand)}
                   value={d.deliveredQty}
+                  disabled={d.onHand <= 0}
                   onChange={e => { const ds = [...deliveries]; ds[i].deliveredQty = e.target.value; setDeliveries(ds); }}
                 />
               </div>
@@ -319,6 +424,82 @@ export default function Sales() {
             ))}
             <div className="modal-footer">
               <button className="btn btn-primary" onClick={() => setProcResult(null)}>Got it!</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Printable Invoice View (Hidden on Screen, Visible on Print) */}
+      {printData && (
+        <div className="print-only">
+          <div className="print-container">
+            <div className="print-header">
+              <div>
+                <h1 style={{ margin: 0, fontSize: '24px' }}>SHIV FURNITURE WORKS</h1>
+                <p style={{ margin: '4px 0', color: '#555' }}>Premium Quality Furniture Solutions</p>
+                <p style={{ margin: 0, fontSize: '14px' }}>123 Industrial Estate, New Delhi, India</p>
+                <p style={{ margin: 0, fontSize: '14px' }}>Email: contact@shivfurniture.com | Phone: +91 98765 43210</p>
+              </div>
+              <div className="text-right">
+                <h2 style={{ margin: 0, fontSize: '28px', color: '#333' }}>INVOICE</h2>
+                <p style={{ margin: '8px 0 4px', fontWeight: 'bold' }}>Invoice #: {printData.orderNo}</p>
+                <p style={{ margin: 0 }}>Date: {new Date(printData.createdAt).toLocaleDateString('en-IN')}</p>
+                <p style={{ margin: 0 }}>Status: {printData.status.replace(/_/g, ' ').toUpperCase()}</p>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '30px', border: '1px solid #ddd', padding: '16px', borderRadius: '4px' }}>
+              <h3 style={{ margin: '0 0 10px 0', borderBottom: '1px solid #eee', paddingBottom: '8px' }}>Bill To:</h3>
+              <p style={{ margin: '4px 0', fontWeight: 'bold', fontSize: '16px' }}>{printData.customer}</p>
+              {printData.customerEmail && <p style={{ margin: '4px 0' }}>Email: {printData.customerEmail}</p>}
+              {printData.customerPhone && <p style={{ margin: '4px 0' }}>Phone: {printData.customerPhone}</p>}
+              {printData.notes && <p style={{ margin: '12px 0 0 0', fontStyle: 'italic', color: '#666' }}>Notes: {printData.notes}</p>}
+            </div>
+
+            <table className="print-table">
+              <thead>
+                <tr>
+                  <th>Item Description</th>
+                  <th className="text-right" style={{ width: '100px' }}>Quantity</th>
+                  <th className="text-right" style={{ width: '150px' }}>Unit Price</th>
+                  <th className="text-right" style={{ width: '150px' }}>Total Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {printData.items?.map((item, idx) => (
+                  <tr key={idx}>
+                    <td>
+                      <div style={{ fontWeight: 'bold' }}>{item.product?.name}</div>
+                      <div style={{ fontSize: '12px', color: '#666' }}>{item.product?.sku} | {item.product?.category}</div>
+                    </td>
+                    <td className="text-right">{item.qty} {item.product?.unit || 'Unit'}</td>
+                    <td className="text-right">₹{item.unitPrice?.toLocaleString('en-IN')}</td>
+                    <td className="text-right">₹{(item.qty * item.unitPrice)?.toLocaleString('en-IN')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <div style={{ width: '300px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span>Subtotal:</span>
+                  <span>₹{printData.totalAmount?.toLocaleString('en-IN')}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', color: '#666' }}>
+                  <span>Tax (0%):</span>
+                  <span>₹0</span>
+                </div>
+                <div className="print-total" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Grand Total:</span>
+                  <span>₹{printData.totalAmount?.toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '60px', textAlign: 'center', color: '#666', borderTop: '1px solid #eee', paddingTop: '20px' }}>
+              <p style={{ margin: '0 0 8px 0' }}>Thank you for your business!</p>
+              <p style={{ margin: 0, fontSize: '12px' }}>This is a computer generated invoice and does not require a physical signature.</p>
             </div>
           </div>
         </div>

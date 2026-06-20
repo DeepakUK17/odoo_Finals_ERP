@@ -95,11 +95,13 @@ model User {
   id        String   @id @default(uuid())
   name      String
   email     String   @unique
+  loginId   String?  @unique
   password  String
   role      Role     @default(sales)
   phone     String?
   address   String?
   position  String?
+  avatarUrl String?
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -129,6 +131,7 @@ model Product {
   onHandQty        Float            @default(0)
   reservedQty      Float            @default(0)
   minStockLevel    Float            @default(10) // for low-stock alerts
+  reorderQty       Float            @default(0)  // for auto-PO generation
   productType      ProductType      @default(finished)
   procurementType  ProcurementType  @default(MTS)
   procurementRoute ProcurementRoute @default(purchase)
@@ -137,6 +140,8 @@ model Product {
   canBeManufactured Boolean         @default(false)
   unit             String           @default("units")
   imageUrl         String?
+  preferredVendorName  String?      // Used for auto-PO generation
+  preferredVendorEmail String?
   isActive         Boolean          @default(true)
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
@@ -147,6 +152,7 @@ model Product {
   manufacturingOrders    ManufacturingOrder[]
   bomProducts            BillOfMaterials[]    @relation("BomProduct")
   bomComponents          BomComponent[]       @relation("BomComponentProduct")
+  moComponents           MoComponent[]
   stockLedger            StockLedger[]
   auditLogs              AuditLog[]
 
@@ -353,10 +359,12 @@ model MoComponent {
   manufacturingOrderId String
   manufacturingOrder   ManufacturingOrder @relation(fields: [manufacturingOrderId], references: [id], onDelete: Cascade)
   productId            String
+  product              Product            @relation(fields: [productId], references: [id])
   requiredQty          Float
   consumedQty          Float              @default(0)
 
   @@index([manufacturingOrderId])
+  @@index([productId])
   @@map("mo_components")
 }
 

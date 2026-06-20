@@ -107,6 +107,18 @@ router.put('/:id', authMiddleware, requireRole('admin', 'manufacturing'), async 
   } catch (err) { next(err); }
 });
 
+// DELETE /api/bom/:id
+router.delete('/:id', authMiddleware, requireRole('admin', 'manufacturing'), async (req, res, next) => {
+  try {
+    const bom = await prisma.billOfMaterials.findUnique({ where: { id: req.params.id }, include: { product: true } });
+    if (!bom) return res.status(404).json({ success: false, message: 'BoM not found' });
+
+    await prisma.billOfMaterials.delete({ where: { id: req.params.id } });
+    await createAuditLog({ userId: req.user.id, action: 'DELETED', model: 'BillOfMaterials', recordId: bom.id, description: `BoM for ${bom.product.name} deleted` });
+    res.json({ success: true, message: 'BoM deleted successfully' });
+  } catch (err) { next(err); }
+});
+
 // GET /api/bom/work-centers/all
 router.get('/work-centers/all', authMiddleware, async (req, res, next) => {
   try {

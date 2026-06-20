@@ -29,6 +29,7 @@ export default function Login() {
       sales: ['sales@shiv.com', 'Sales@123'],
       purchase: ['purchase@shiv.com', 'Purchase@123'],
       mfg: ['mfg@shiv.com', 'Mfg@123'],
+      inventory: ['inventory@shiv.com', 'Inv@123'],
     };
     setEmail(creds[role][0]);
     setPassword(creds[role][1]);
@@ -53,19 +54,19 @@ export default function Login() {
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label className="form-label">Email Address</label>
+            <label className="form-label">Email or Login ID</label>
             <input
               id="login-email"
-              type="email"
+              type="text"
               className="form-input"
-              placeholder="admin@shiv.com"
+              placeholder="admin@shiv.com or mylogin123"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
             />
           </div>
 
-          <div className="form-group">
+          <div className="form-group" style={{ marginBottom: 8 }}>
             <label className="form-label">Password</label>
             <input
               id="login-password"
@@ -77,6 +78,8 @@ export default function Login() {
               required
             />
           </div>
+          
+
 
           {error && (
             <div style={{ background: 'var(--danger-bg)', border: '1px solid var(--danger)', borderRadius: 'var(--radius-sm)', padding: '10px 14px', fontSize: 13, color: 'var(--danger)', marginBottom: 16 }}>
@@ -89,11 +92,13 @@ export default function Login() {
           </button>
         </form>
 
+
+
         <div className="login-demo-creds">
           <h4>🧪 Quick Demo Login</h4>
-          {['admin', 'sales', 'purchase', 'mfg'].map(role => (
+          {['admin', 'sales', 'purchase', 'mfg', 'inventory'].map(role => (
             <div key={role} className="demo-cred" style={{ cursor: 'pointer' }} onClick={() => fillDemo(role)}>
-              <b>{role.charAt(0).toUpperCase() + role.slice(1)}</b>
+              <b>{role === 'admin' ? 'Business Owner (Admin)' : role.charAt(0).toUpperCase() + role.slice(1)}</b>
               <span>{role === 'mfg' ? 'mfg@shiv.com' : `${role}@shiv.com`}</span>
             </div>
           ))}

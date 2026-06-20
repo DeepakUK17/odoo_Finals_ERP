@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react';
 import api from '../api/client';
 import { useToast } from '../context/ToastContext';
-import { Plus, Search, Edit2, Trash2, X, Check } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, X, Check, Download } from 'lucide-react';
+import { exportToCSV } from '../utils/export';
+import ConfirmModal from '../components/ConfirmModal';
 
 const EMPTY_FORM = {
   name: '', description: '', salesPrice: '', costPrice: '',
-  onHandQty: '', minStockLevel: '10', productType: 'finished',
+  onHandQty: '', minStockLevel: '10', reorderQty: '0', productType: 'finished',
   procurementType: 'MTS', procurementRoute: 'purchase',
-  canBeSold: true, canBePurchased: true, canBeManufactured: false, unit: 'pcs'
+  canBeSold: true, canBePurchased: true, canBeManufactured: false, unit: 'pcs',
+  preferredVendorName: '', preferredVendorEmail: ''
 };
 
 export default function Products() {
@@ -20,6 +23,7 @@ export default function Products() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [filterType, setFilterType] = useState('');
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
   const fetchProducts = async () => {
     setLoading(true);
@@ -41,10 +45,12 @@ export default function Products() {
     setForm({
       name: p.name, description: p.description || '',
       salesPrice: p.salesPrice, costPrice: p.costPrice,
-      onHandQty: p.onHandQty, minStockLevel: p.minStockLevel,
+      onHandQty: p.onHandQty, minStockLevel: p.minStockLevel, reorderQty: p.reorderQty || 0,
       productType: p.productType, procurementType: p.procurementType,
       procurementRoute: p.procurementRoute, canBeSold: p.canBeSold,
-      canBePurchased: p.canBePurchased, canBeManufactured: p.canBeManufactured, unit: p.unit
+      canBePurchased: p.canBePurchased, canBeManufactured: p.canBeManufactured, unit: p.unit,
+      preferredVendorName: p.preferredVendorName || '',
+      preferredVendorEmail: p.preferredVendorEmail || ''
     });
     setShowModal(true);
   };
@@ -59,9 +65,10 @@ export default function Products() {
       const body = {
         ...form,
         salesPrice: parseFloat(form.salesPrice),
-        costPrice: parseFloat(form.costPrice),
+        costPrice: parseFloat(form.costPrice) || 0,
         onHandQty: parseFloat(form.onHandQty) || 0,
         minStockLevel: parseFloat(form.minStockLevel) || 10,
+        reorderQty: parseFloat(form.reorderQty) || 0
       };
       if (editing) {
         await api.put(`/products/${editing.id}`, body);
@@ -78,13 +85,20 @@ export default function Products() {
     setSaving(false);
   };
 
-  const handleDelete = async (p) => {
-    if (!confirm(`Archive "${p.name}"?`)) return;
-    try {
-      await api.delete(`/products/${p.id}`);
-      toast.success(`${p.name} archived`);
-      fetchProducts();
-    } catch { toast.error('Delete failed'); }
+  const handleDelete = (p) => {
+    setConfirmDialog({
+      title: 'Archive Product',
+      message: `Archive "${p.name}"? It will no longer appear in new orders.`,
+      confirmColor: 'danger',
+      confirmText: 'Archive',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/products/${p.id}`);
+          toast.success(`${p.name} archived`);
+          fetchProducts();
+        } catch { toast.error('Delete failed'); }
+      }
+    });
   };
 
   const stockStatus = (p) => {
@@ -93,14 +107,29 @@ export default function Products() {
     return { label: 'In Stock', cls: 'fully_delivered' };
   };
 
+  const handleExport = () => {
+    const data = products.map(p => ({
+      Name: p.name, Type: p.productType, Unit: p.unit,
+      SalesPrice: p.salesPrice, CostPrice: p.costPrice,
+      OnHand: p.onHandQty, Reserved: p.reservedQty, Available: Math.max(0, p.onHandQty - (p.reservedQty || 0)),
+      MinStock: p.minStockLevel, ReorderQty: p.reorderQty,
+      ProcurementRoute: p.procurementRoute, PreferredVendor: p.preferredVendorName || ''
+    }));
+    exportToCSV(data, 'Products_Catalog');
+  };
+
   return (
     <div>
+      <ConfirmModal isOpen={!!confirmDialog} {...confirmDialog} onCancel={() => setConfirmDialog(null)} />
       <div className="page-header">
         <div>
           <h1 className="page-title">📦 Products</h1>
           <p className="page-subtitle">Manage your product catalog and inventory</p>
         </div>
-        <div className="page-actions">
+        <div className="page-actions" style={{ display: 'flex', gap: 10 }}>
+          <button className="btn btn-secondary" onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Download size={16} /> Export
+          </button>
           <button className="btn btn-primary" onClick={openCreate} id="add-product-btn">
             <Plus size={16} /> Add Product
           </button>
@@ -224,8 +253,15 @@ export default function Products() {
                 <input className="form-input" type="number" min="0" value={form.costPrice} onChange={e => setForm(f => ({ ...f, costPrice: e.target.value }))} placeholder="1200" />
               </div>
               <div className="form-group">
-                <label className="form-label">Min Stock Level</label>
+                <label>Min Stock Level (Alert)</label>
                 <input className="form-input" type="number" min="0" value={form.minStockLevel} onChange={e => setForm(f => ({ ...f, minStockLevel: e.target.value }))} placeholder="10" />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label>Reorder Qty (Auto PO)</label>
+                <input className="form-input" type="number" min="0" value={form.reorderQty} onChange={e => setForm(f => ({ ...f, reorderQty: e.target.value }))} placeholder="0 (Disable)" />
               </div>
             </div>
 
@@ -259,6 +295,21 @@ export default function Products() {
                 <input className="form-input" type="number" min="0" value={form.onHandQty} onChange={e => setForm(f => ({ ...f, onHandQty: e.target.value }))} placeholder="0" disabled={!!editing} />
               </div>
             </div>
+
+            {/* Preferred Vendor (for auto-PO) */}
+            {(form.procurementRoute === 'purchase' || form.canBePurchased) && (
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Preferred Vendor Name</label>
+                  <input className="form-input" value={form.preferredVendorName} onChange={e => setForm(f => ({ ...f, preferredVendorName: e.target.value }))} placeholder="e.g. Raja Timber Suppliers" />
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, display: 'block' }}>Used for auto-generated Purchase Orders</span>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Preferred Vendor Email</label>
+                  <input className="form-input" type="email" value={form.preferredVendorEmail} onChange={e => setForm(f => ({ ...f, preferredVendorEmail: e.target.value }))} placeholder="vendor@example.com" />
+                </div>
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: 20, marginBottom: 16 }}>
               {[['canBeSold', 'Can Be Sold'], ['canBePurchased', 'Can Be Purchased'], ['canBeManufactured', 'Can Be Manufactured']].map(([key, label]) => (

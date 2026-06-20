@@ -30,12 +30,17 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
+  const updateUser = (userData) => {
+    setUser(userData);
+    localStorage.setItem('erp_user', JSON.stringify(userData));
+  };
+
   // Role-based access helpers
   const hasRole = (...roles) => user && roles.includes(user.role);
   const isAdmin = () => user?.role === 'admin';
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading, hasRole, isAdmin }}>
+    <AuthContext.Provider value={{ user, login, logout, updateUser, loading, hasRole, isAdmin }}>
       {children}
     </AuthContext.Provider>
   );

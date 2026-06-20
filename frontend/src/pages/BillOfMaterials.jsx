@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import api from '../api/client';
 import { useToast } from '../context/ToastContext';
-import { Plus, X, Trash2 } from 'lucide-react';
+import { Plus, X, Trash2, Download } from 'lucide-react';
+import { exportToCSV } from '../utils/export';
+import ConfirmModal from '../components/ConfirmModal';
 
 export default function BillOfMaterials() {
   const toast = useToast();
@@ -11,12 +13,14 @@ export default function BillOfMaterials() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     productId: '', qty: 1, reference: '',
     components: [{ productId: '', qty: 1, unit: 'pcs' }],
     workOperations: [{ workCenterId: '', operation: '', duration: 1 }]
   });
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -51,38 +55,104 @@ export default function BillOfMaterials() {
     setForm(f => ({ ...f, workOperations: ops }));
   };
 
-  const handleCreate = async () => {
+  const handleSave = async () => {
     if (!form.productId || form.components.some(c => !c.productId)) {
       toast.error('Product and all components are required'); return;
     }
     setSaving(true);
     try {
-      await api.post('/bom', {
+      const payload = {
         ...form,
         qty: parseFloat(form.qty),
         components: form.components.map(c => ({ ...c, qty: parseFloat(c.qty) })),
         workOperations: form.workOperations.filter(op => op.workCenterId && op.operation).map(op => ({ ...op, duration: parseFloat(op.duration) }))
-      });
-      toast.success('Bill of Materials created!');
-      setShowCreate(false);
+      };
+      
+      if (editing) {
+        await api.put(`/bom/${editing.id}`, payload);
+        toast.success('Bill of Materials updated!');
+      } else {
+        await api.post('/bom', payload);
+        toast.success('Bill of Materials created!');
+      }
+      
+      closeModal();
       fetchAll();
-    } catch (err) { toast.error(err.response?.data?.message || 'Create failed'); }
+      setSelected(null);
+    } catch (err) { toast.error(err.response?.data?.message || 'Save failed'); }
     setSaving(false);
+  };
+
+  const openEdit = (bom) => {
+    setForm({
+      productId: bom.productId,
+      qty: bom.qty,
+      reference: bom.reference || '',
+      components: bom.components?.length ? bom.components.map(c => ({ productId: c.productId, qty: c.qty, unit: c.unit })) : [{ productId: '', qty: 1, unit: 'pcs' }],
+      workOperations: bom.workOperations?.length ? bom.workOperations.map(op => ({ workCenterId: op.workCenterId, operation: op.operation, duration: op.duration })) : [{ workCenterId: '', operation: '', duration: 1 }]
+    });
+    setEditing(bom);
+    setShowCreate(true);
+  };
+
+  const handleDelete = (id) => {
+    setConfirmDialog({
+      title: 'Delete BOM',
+      message: 'Are you sure you want to delete this Bill of Materials? This action cannot be undone.',
+      confirmColor: 'danger',
+      confirmText: 'Delete',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/bom/${id}`);
+          toast.success('Bill of Materials deleted successfully');
+          setSelected(null);
+          fetchAll();
+        } catch (err) { toast.error(err.response?.data?.message || 'Delete failed'); }
+      }
+    });
+  };
+
+  const closeModal = () => {
+    setShowCreate(false);
+    setEditing(null);
+    setForm({
+      productId: '', qty: 1, reference: '',
+      components: [{ productId: '', qty: 1, unit: 'pcs' }],
+      workOperations: [{ workCenterId: '', operation: '', duration: 1 }]
+    });
   };
 
   const componentProducts = products.filter(p => p.productType === 'component' || !p.canBeManufactured);
   const finishedProducts = products.filter(p => p.productType === 'finished');
 
+  const handleExport = () => {
+    const data = boms.map(b => ({
+      Reference: b.reference || b.id,
+      Product: products.find(p => p.id === b.productId)?.name || b.productId,
+      Qty: b.qty,
+      ComponentCount: b.components?.length || 0,
+      Components: (b.components || []).map(c => `${c.qty}×${products.find(p => p.id === c.productId)?.name}`).join('; '),
+      WorkOperations: (b.workOperations || []).map(op => op.operation).join('; ')
+    }));
+    exportToCSV(data, 'Bill_of_Materials');
+  };
+
   return (
     <div>
+      <ConfirmModal isOpen={!!confirmDialog} {...confirmDialog} onCancel={() => setConfirmDialog(null)} />
       <div className="page-header">
         <div>
           <h1 className="page-title">📄 Bill of Materials</h1>
           <p className="page-subtitle">Define product recipes, components, and work operations</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowCreate(true)} id="create-bom-btn">
-          <Plus size={16} /> New BoM
-        </button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button className="btn btn-secondary" onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Download size={16} /> Export
+          </button>
+          <button className="btn btn-primary" onClick={() => { setEditing(null); setShowCreate(true); }} id="create-bom-btn">
+            <Plus size={16} /> New BoM
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 420px' : '1fr', gap: 20 }}>
@@ -141,7 +211,11 @@ export default function BillOfMaterials() {
               <h3 style={{ fontFamily: 'Outfit', fontSize: 16, fontWeight: 700 }}>
                 📄 {selected.product?.name}
               </h3>
-              <button className="modal-close" onClick={() => setSelected(null)}><X size={16} /></button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-sm btn-secondary" onClick={() => openEdit(selected)}>✏️ Edit</button>
+                <button className="btn btn-sm btn-danger" onClick={() => handleDelete(selected.id)}>🗑️ Delete</button>
+                <button className="modal-close" onClick={() => setSelected(null)}><X size={16} /></button>
+              </div>
             </div>
 
             <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
@@ -187,19 +261,19 @@ export default function BillOfMaterials() {
         )}
       </div>
 
-      {/* Create BoM Modal */}
+      {/* Create/Edit BoM Modal */}
       {showCreate && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCreate(false)}>
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && closeModal()}>
           <div className="modal modal-xl" style={{ maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="modal-header">
-              <h2 className="modal-title">📄 New Bill of Materials</h2>
-              <button className="modal-close" onClick={() => setShowCreate(false)}><X size={18} /></button>
+              <h2 className="modal-title">{editing ? '✏️ Edit Bill of Materials' : '📄 New Bill of Materials'}</h2>
+              <button className="modal-close" onClick={closeModal}><X size={18} /></button>
             </div>
 
             <div className="form-row">
               <div className="form-group">
                 <label className="form-label">Finished Product *</label>
-                <select className="form-select" value={form.productId} onChange={e => setForm(f => ({ ...f, productId: e.target.value }))} id="bom-product">
+                <select className="form-select" value={form.productId} onChange={e => setForm(f => ({ ...f, productId: e.target.value }))} id="bom-product" disabled={!!editing}>
                   <option value="">Select finished product...</option>
                   {finishedProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
@@ -256,9 +330,9 @@ export default function BillOfMaterials() {
             </div>
 
             <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleCreate} disabled={saving} id="save-bom-btn">
-                {saving ? 'Saving...' : '📄 Create BoM'}
+              <button className="btn btn-secondary" onClick={closeModal}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleSave} disabled={saving} id="save-bom-btn">
+                {saving ? 'Saving...' : (editing ? '💾 Save Changes' : '📄 Create BoM')}
               </button>
             </div>
           </div>
