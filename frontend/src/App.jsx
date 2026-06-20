@@ -8,12 +8,14 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Products from './pages/Products';
 import Sales from './pages/Sales';
+import Invoices from './pages/Invoices';
 import Purchase from './pages/Purchase';
 import Manufacturing from './pages/Manufacturing';
 import BillOfMaterials from './pages/BillOfMaterials';
 import AuditLogs from './pages/AuditLogs';
 import UserManagement from './pages/UserManagement';
 import StockMovements from './pages/StockMovements';
+import Presentation from './pages/Presentation';
 
 export default function App() {
   return (
@@ -27,12 +29,14 @@ export default function App() {
               <Route path="/dashboard"      element={<Dashboard />} />
               <Route path="/products"       element={<Products />} />
               <Route path="/sales"          element={<Sales />} />
+              <Route path="/invoices"       element={<Invoices />} />
               <Route path="/purchase"       element={<Purchase />} />
               <Route path="/manufacturing"  element={<Manufacturing />} />
               <Route path="/bom"            element={<BillOfMaterials />} />
               <Route path="/audit"          element={<AuditLogs />} />
               <Route path="/users"          element={<UserManagement />} />
               <Route path="/stock"          element={<StockMovements />} />
+              <Route path="/presentation"   element={<Presentation />} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

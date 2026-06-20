@@ -7,6 +7,7 @@ const requireRole = require('../middleware/role.middleware');
 const { createAuditLog } = require('../services/audit.service');
 const { updateStock } = require('../services/stock.service');
 const { createNotification } = require('../services/notification.service');
+const { sendPurchaseOrderEmail } = require('../services/email.service');
 
 const poSchema = z.object({
   vendor: z.string().min(1),
@@ -90,18 +91,26 @@ router.post('/', authMiddleware, requireRole('admin', 'purchase'), async (req, r
 // POST /api/purchase/:id/confirm
 router.post('/:id/confirm', authMiddleware, requireRole('admin', 'purchase'), async (req, res, next) => {
   try {
-    const order = await prisma.purchaseOrder.findUnique({ where: { id: req.params.id } });
+    const order = await prisma.purchaseOrder.findUnique({ where: { id: req.params.id }, include: { items: { include: { product: true } } } });
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
     if (order.status !== 'draft') return res.status(400).json({ success: false, message: 'Order already confirmed' });
 
-    const confirmed = await prisma.purchaseOrder.update({
+    const confirmedOrder = await prisma.purchaseOrder.update({
       where: { id: order.id },
       data: { status: 'confirmed', confirmedAt: new Date() },
       include: { items: { include: { product: true } } }
     });
 
-    await createAuditLog({ userId: req.user.id, action: 'CONFIRMED', model: 'PurchaseOrder', recordId: order.id, description: `Purchase Order ${order.orderNo} confirmed — sent to vendor ${order.vendor}`, purchaseOrderId: order.id });
-    res.json({ success: true, data: confirmed });
+    await createAuditLog({ userId: req.user.id, action: 'CONFIRMED', model: 'PurchaseOrder', recordId: order.id, description: `Purchase Order ${order.orderNo} confirmed`, purchaseOrderId: order.id });
+    await createNotification({ type: 'info', title: 'PO Confirmed', message: `${order.orderNo} confirmed with ${order.vendor}`, reference: order.orderNo });
+
+    // Send the Email!
+    const emailResult = await sendPurchaseOrderEmail(confirmedOrder);
+    if (emailResult.success) {
+      await createAuditLog({ userId: req.user.id, action: 'EMAIL_SENT', model: 'PurchaseOrder', recordId: order.id, description: `Ethereal Email sent to Vendor. Preview: ${emailResult.url}`, purchaseOrderId: order.id });
+    }
+
+    res.json({ success: true, data: confirmedOrder, emailPreviewUrl: emailResult.url });
   } catch (err) { next(err); }
 });
 

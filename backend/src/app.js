@@ -33,6 +33,7 @@ app.use('/api/notifications',   require('./routes/notifications.routes'));
 app.use('/api/ai',              require('./routes/ai.routes'));
 app.use('/api/upload',          require('./routes/upload.routes'));
 app.use('/api/stock-ledger',    require('./routes/stockledger.routes'));
+app.use('/api/invoices',        require('./routes/invoices.routes'));
 
 // ─── Health Check ────────────────────────────
 app.get('/api/health', (req, res) => {

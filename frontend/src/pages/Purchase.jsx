@@ -93,8 +93,20 @@ export default function Purchase() {
 
   const handleConfirm = async (id, orderNo) => {
     try {
-      await api.post(`/purchase/${id}/confirm`);
-      toast.success(`${orderNo} confirmed — sent to vendor`);
+      const { data } = await api.post(`/purchase/${id}/confirm`);
+      if (data.emailPreviewUrl) {
+        toast.success(
+          <div>
+            {orderNo} confirmed!<br/>
+            <a href={data.emailPreviewUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline', color: 'inherit' }}>
+              Click here to view the email sent to the vendor.
+            </a>
+          </div>,
+          { duration: 10000 } // Keep open longer so they can click
+        );
+      } else {
+        toast.success(`${orderNo} confirmed`);
+      }
       reload();
     } catch (err) { toast.error(err.response?.data?.message || 'Confirm failed'); }
   };

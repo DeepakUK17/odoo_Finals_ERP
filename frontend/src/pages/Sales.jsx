@@ -148,6 +148,14 @@ export default function Sales() {
     });
   };
 
+  const handleGenerateInvoice = async (orderId, orderNo) => {
+    try {
+      await api.post('/invoices', { salesOrderId: orderId });
+      toast.success(`Invoice generated for ${orderNo}`);
+      reload();
+    } catch (err) { toast.error(err.response?.data?.message || 'Failed to generate invoice'); }
+  };
+
   const handlePrint = (order) => {
     setPrintData(order);
     setTimeout(() => {
@@ -282,13 +290,10 @@ export default function Sales() {
                     </td>
                     <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{new Date(o.createdAt).toLocaleDateString('en-IN')}</td>
                     <td>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        {o.status === 'draft' && (
-                          <button className="btn btn-sm btn-success" onClick={() => handleConfirm(o.id, o.orderNo)} title="Confirm"><Check size={14} /></button>
-                        )}
-                        {['confirmed', 'partially_delivered'].includes(o.status) && (
-                          <button className="btn btn-sm btn-primary" onClick={() => openDeliver(o)} title="Deliver"><Truck size={14} /></button>
-                        )}
+                      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                        {o.status === 'draft' && <button className="btn-sm" onClick={(e) => { e.stopPropagation(); handleConfirm(o.id, o.orderNo); }}><Check size={14} /> Confirm</button>}
+                        {['confirmed', 'partially_delivered'].includes(o.status) && <button className="btn-sm" onClick={(e) => { e.stopPropagation(); openDeliver(o); }}><Truck size={14} /> Deliver</button>}
+                        {['confirmed', 'partially_delivered', 'fully_delivered'].includes(o.status) && <button className="btn-sm" style={{ background: 'var(--info-bg)', borderColor: 'var(--info)' }} onClick={(e) => { e.stopPropagation(); handleGenerateInvoice(o.id, o.orderNo); }}><FileText size={14} /> Invoice</button>}
                         {!['fully_delivered', 'cancelled'].includes(o.status) && (
                           <button className="btn btn-sm btn-danger" onClick={() => handleCancel(o.id, o.orderNo)} title="Cancel"><X size={14} /></button>
                         )}

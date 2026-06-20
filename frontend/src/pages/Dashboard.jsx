@@ -6,12 +6,9 @@ import {
   AlertTriangle, TrendingUp, Activity, Clock, X
 } from 'lucide-react';
 import {
-  Chart as ChartJS, CategoryScale, LinearScale, BarElement,
-  Title, Tooltip, Legend, LineElement, PointElement
-} from 'chart.js';
-import { Bar } from 'react-chartjs-2';
-
-ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend);
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
+  BarChart, Bar as RechartsBar, Legend as RechartsLegend, Cell
+} from 'recharts';
 
 const ROLE_KPIS = {
   admin: [
@@ -68,25 +65,11 @@ export default function Dashboard() {
         setForecast((fc.data.data || []).filter(f => f.daysToStockOut !== null && f.daysToStockOut < 30).sort((a, b) => (a.daysToStockOut || 999) - (b.daysToStockOut || 999)).slice(0, 6));
 
         const days = cd.data.data || [];
-        setChartData({
-          labels: days.map(d => new Date(d.date).toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' })),
-          datasets: [{
-            label: 'Revenue (₹)',
-            data: days.map(d => d.revenue || 0),
-            backgroundColor: 'rgba(59,130,246,0.65)',
-            borderColor: 'rgba(59,130,246,1)',
-            borderWidth: 2,
-            borderRadius: 6,
-          }, {
-            label: 'Orders',
-            data: days.map(d => d.count),
-            backgroundColor: 'rgba(139,92,246,0.5)',
-            borderColor: 'rgba(139,92,246,1)',
-            borderWidth: 1,
-            borderRadius: 4,
-            yAxisID: 'y1',
-          }]
-        });
+        setChartData(days.map(d => ({
+          name: new Date(d.date).toLocaleDateString('en-IN', { weekday: 'short' }),
+          Revenue: d.revenue || 0,
+          Orders: d.count || 0
+        })));
       } catch (err) { console.error(err); }
       setLoading(false);
     };
@@ -154,30 +137,26 @@ export default function Dashboard() {
             📈 Sales Orders — Last 7 Days
           </h3>
           {chartData ? (
-            <Bar data={chartData} options={{
-              responsive: true,
-              interaction: { mode: 'index', intersect: false },
-              plugins: {
-                legend: { display: true, labels: { color: '#9ca3af', font: { size: 11 } } },
-                tooltip: {
-                  backgroundColor: '#1e293b',
-                  titleColor: '#ffffff',
-                  bodyColor: '#cbd5e1',
-                  borderColor: '#475569',
-                  borderWidth: 1,
-                  callbacks: {
-                    label: (ctx) => ctx.datasetIndex === 0
-                      ? ` Revenue: ₹${(ctx.raw || 0).toLocaleString('en-IN')}`
-                      : ` Orders: ${ctx.raw}`
-                  }
-                }
-              },
-              scales: {
-                x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af', font: { size: 11 } } },
-                y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#9ca3af', callback: v => `₹${(v/1000).toFixed(0)}K` }, beginAtZero: true, position: 'left' },
-                y1: { display: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#9ca3af', precision: 0 }, beginAtZero: true }
-              }
-            }} />
+            <div style={{ width: '100%', height: 280 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(217,91%,60%)" stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor="hsl(217,91%,60%)" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="name" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} tickFormatter={v => `₹${(v/1000).toFixed(0)}K`} />
+                  <RechartsTooltip 
+                    contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', borderRadius: '8px', color: '#fff' }}
+                    itemStyle={{ color: '#cbd5e1' }}
+                    formatter={(value, name) => [name === 'Revenue' ? `₹${value.toLocaleString('en-IN')}` : value, name]}
+                  />
+                  <Area type="monotone" dataKey="Revenue" stroke="hsl(217,91%,60%)" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
           ) : <div className="loading-overlay" style={{ minHeight: 180 }}><div className="spinner" /></div>}
         </div>
 
