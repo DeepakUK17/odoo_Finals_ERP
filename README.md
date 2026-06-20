@@ -18,6 +18,10 @@ This is a comprehensive ERP system tailor-made for **Shiv Furniture Works**. Des
 
 At the heart of the system is a **Role-Based AI Assistant** powered by Google Gemini, capable of giving real-time, context-aware, and secure business insights directly from the live database.
 
+- 🔔 **Socket.io Integration**: Global real-time updates across all users and modules. No manual page refreshing required!
+- 🌓 **Dynamic Theme Engine**: Premium Dark and Light modes with seamless switching and browser persistence.
+- 💬 **Gemini AI Assistant**: Ask questions like *"Which product is running low on stock?"* or *"What is our total revenue this week?"* and get instant, database-backed answers.
+
 ---
 
 ## ✨ Key Achievements (What We've Built)
