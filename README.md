@@ -32,9 +32,10 @@ At the heart of the system is a **Role-Based AI Assistant** powered by Google Ge
 - **Quantity Optimization:** Auto-POs intelligently respect minimum reorder quantities and check for existing pending POs to prevent duplicate ordering of the same raw materials.
 
 ### 2. 🛡️ Robust Role-Based Access Control (RBAC)
-- Five distinct user roles: **Admin**, **Sales**, **Manufacturing**, **Purchasing**, and **Inventory**.
+- Six distinct user roles: **Admin**, **Sales**, **Manufacturing**, **Purchasing**, **Inventory**, and **HR**.
 - Strict frontend and backend enforcement.
 - Financial confidentiality: Roles like *Sales* are physically restricted from viewing component costs, profit margins, or procurement secrets.
+- **HR specific modules:** Includes robust Employee Attendance Tracking (Daily/Monthly) and Leave Request Approvals with matrix CSV exports.
 
 ### 3. 🤖 Secure, Role-Aware AI Assistant
 - Integrated with **Gemini 1.5 Flash**.
@@ -97,6 +98,7 @@ Use these accounts to explore the RBAC features:
 | **Purchase** | purchase@shiv.com | Purchase@123 |
 | **Manufacturing** | mfg@shiv.com | Mfg@123 |
 | **Inventory** | inventory@shiv.com | Inv@123 |
+| **HR** | hr@shiv.com | Hr@123 |
 
 ---
 
