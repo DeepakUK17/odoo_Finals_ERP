@@ -48,7 +48,12 @@ At the heart of the system is a **Role-Based AI Assistant** powered by Google Ge
 - **Print Optimization:** Invoices and Bills of Material dynamically switch to clean, white backgrounds with correct branding alignments specifically for printing.
 - **Failsafe UX:** Destructive or critical actions (like completing an MO with missing components) feature greyed-out buttons and toast warnings instead of application crashes.
 
-### 5. 📜 Comprehensive Audit Logging
+### 5. 🛒 Public E-Commerce Storefront
+- **Stand-alone Application:** A fully functional, lightweight React storefront running parallel to the internal ERP.
+- **Real-Time Integration:** Checkout flows instantly generate Draft Sales Orders inside the ERP without page refreshes, via Socket.io.
+- **Customer Portal:** Customers can log in securely to view their dynamic "My Orders" status, updating in real-time as the ERP processes shipments.
+
+### 6. 📜 Comprehensive Audit Logging
 - Every create, update, or status change across any module is recorded with the user's name, timestamp, and detailed description, ensuring full traceability.
 
 ---
@@ -82,7 +87,15 @@ Open a second terminal and run:
 ```bash
 cd frontend
 npm install
-npm run dev           # Starts app on http://localhost:5173
+npm run dev           # Starts ERP App on http://localhost:5173
+```
+
+### 4. Storefront Setup (Public Website)
+Open a third terminal and run:
+```bash
+cd storefront
+npm install
+npm run dev           # Starts Storefront on http://localhost:5174
 ```
 
 ---

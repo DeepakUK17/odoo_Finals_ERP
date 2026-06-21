@@ -11,7 +11,7 @@ const app = express();
 // ─── Middleware ───────────────────────────────
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: [process.env.FRONTEND_URL || 'http://localhost:5173', 'http://localhost:5174'],
   credentials: true
 }));
 app.use(express.json());
@@ -62,6 +62,7 @@ app.use('/api/attendance',      require('./routes/attendance.routes'));
 app.use('/api/leaves',          require('./routes/leaves.routes'));
 app.use('/api/upload',          require('./routes/upload.routes'));
 app.use('/api/stock-ledger',    require('./routes/stockledger.routes'));
+app.use('/api/storefront',      require('./routes/storefront.routes'));
 
 
 // ─── Health Check ────────────────────────────
