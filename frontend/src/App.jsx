@@ -16,6 +16,9 @@ import BillOfMaterials from './pages/BillOfMaterials';
 import AuditLogs from './pages/AuditLogs';
 import UserManagement from './pages/UserManagement';
 import StockMovements from './pages/StockMovements';
+import AttendanceView from './pages/AttendanceView';
+import LeaveApprovals from './pages/LeaveApprovals';
+import MyLeaves from './pages/MyLeaves';
 import { SocketProvider } from './context/SocketContext';
 
 export default function App() {
@@ -42,6 +45,9 @@ export default function App() {
                 <Route path="/audit" element={<AuditLogs />} />
                 <Route path="/users" element={<UserManagement />} />
                 <Route path="/stock" element={<StockMovements />} />
+                <Route path="/my-leaves" element={<MyLeaves />} />
+                <Route path="/attendance" element={<AttendanceView />} />
+                <Route path="/leaves" element={<LeaveApprovals />} />
               </Route>
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>

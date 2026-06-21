@@ -10,7 +10,7 @@ router.get('/summary', authMiddleware, async (req, res, next) => {
 
     const [
       totalSales, pendingDeliveries, totalPurchase, partialReceipts,
-      totalMO, activeMO, allProducts
+      totalMO, activeMO, allProducts, totalEmployees, todayAttendance
     ] = await Promise.all([
       prisma.salesOrder.count(),
       prisma.salesOrder.count({ where: { status: { in: ['confirmed', 'partially_delivered'] } } }),
@@ -18,11 +18,22 @@ router.get('/summary', authMiddleware, async (req, res, next) => {
       prisma.purchaseOrder.count({ where: { status: 'partially_received' } }),
       prisma.manufacturingOrder.count(),
       prisma.manufacturingOrder.count({ where: { status: { in: ['confirmed', 'in_progress'] } } }),
-      prisma.product.findMany({ where: { isActive: true } })
+      prisma.product.findMany({ where: { isActive: true } }),
+      prisma.user.count({ where: { isActive: true } }),
+      prisma.attendance.findMany({
+        where: {
+          date: {
+            gte: new Date(new Date().setHours(0, 0, 0, 0)),
+            lt: new Date(new Date().setHours(23, 59, 59, 999))
+          }
+        }
+      })
     ]);
 
     const lowStockProducts = allProducts.filter(p => p.onHandQty <= p.minStockLevel);
     const totalStockValue = allProducts.reduce((sum, p) => sum + (p.onHandQty * p.costPrice), 0);
+    const usersOnLeave = todayAttendance.filter(a => a.status === 'leave').length;
+    const usersPresent = todayAttendance.filter(a => a.status === 'present').length;
 
     // Revenue & Orders this week (last 7 days)
     const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
@@ -50,11 +61,15 @@ router.get('/summary', authMiddleware, async (req, res, next) => {
     if (['admin', 'inventory'].includes(role)) {
       Object.assign(summary, { lowStockCount: lowStockProducts.length, totalStockValue, totalProducts: allProducts.length });
     }
+    if (['admin', 'hr'].includes(role)) {
+      Object.assign(summary, { totalEmployees, usersOnLeave, usersPresent });
+    }
     if (role === 'admin') {
       Object.assign(summary, {
         totalSales, pendingDeliveries, totalPurchase, partialReceipts,
         totalMO, activeMO, lowStockCount: lowStockProducts.length,
-        totalStockValue, weeklyRevenue, weeklyOrders: weeklyOrdersCount, totalProducts: allProducts.length
+        totalStockValue, weeklyRevenue, weeklyOrders: weeklyOrdersCount, totalProducts: allProducts.length,
+        totalEmployees, usersOnLeave, usersPresent
       });
     }
 

@@ -30,6 +30,7 @@ export default function Login() {
       purchase: ['purchase@shiv.com', 'Purchase@123'],
       mfg: ['mfg@shiv.com', 'Mfg@123'],
       inventory: ['inventory@shiv.com', 'Inv@123'],
+      hr: ['hr@shiv.com', 'Hr@123']
     };
     setEmail(creds[role][0]);
     setPassword(creds[role][1]);
@@ -96,9 +97,9 @@ export default function Login() {
 
         <div className="login-demo-creds">
           <h4>🧪 Quick Demo Login</h4>
-          {['admin', 'sales', 'purchase', 'mfg', 'inventory'].map(role => (
+          {['admin', 'sales', 'purchase', 'mfg', 'inventory', 'hr'].map(role => (
             <div key={role} className="demo-cred" style={{ cursor: 'pointer' }} onClick={() => fillDemo(role)}>
-              <b>{role === 'admin' ? 'Business Owner (Admin)' : role.charAt(0).toUpperCase() + role.slice(1)}</b>
+              <b>{role === 'admin' ? 'Business Owner (Admin)' : role === 'hr' ? 'HR Manager' : role.charAt(0).toUpperCase() + role.slice(1)}</b>
               <span>{role === 'mfg' ? 'mfg@shiv.com' : `${role}@shiv.com`}</span>
             </div>
           ))}

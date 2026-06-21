@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard, Package, ShoppingCart, TruckIcon,
   Factory, ClipboardList, FileText, Users, ChevronLeft,
-  ChevronRight, LogOut, BarChart2, PlayCircle, FileCheck
+  ChevronRight, LogOut, BarChart2, PlayCircle, FileCheck, Calendar, CalendarCheck
 } from 'lucide-react';
 import ProfileModal from './ProfileModal';
 
@@ -13,7 +13,8 @@ const NAV_ITEMS = [
   {
     section: 'Overview',
     items: [
-      { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'sales', 'purchase', 'manufacturing', 'inventory'] },
+      { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'sales', 'purchase', 'manufacturing', 'inventory', 'hr'] },
+      { path: '/my-leaves', label: 'My Leaves', icon: Calendar, roles: ['admin', 'sales', 'purchase', 'manufacturing', 'inventory', 'hr'] },
     ]
   },
   {
@@ -28,11 +29,19 @@ const NAV_ITEMS = [
       { path: '/stock', label: 'Stock Movements', icon: BarChart2, roles: ['admin', 'inventory', 'manufacturing'] },
     ]
   },
+
+  {
+    section: 'HR',
+    items: [
+      { path: '/attendance', label: 'Attendance', icon: Calendar, roles: ['admin', 'hr'] },
+      { path: '/leaves', label: 'Leave Approvals', icon: CalendarCheck, roles: ['admin', 'hr'] },
+    ]
+  },
   {
     section: 'Admin',
     items: [
       { path: '/audit', label: 'Audit Logs', icon: FileText, roles: ['admin'] },
-      { path: '/users', label: 'User Management', icon: Users, roles: ['admin'] },
+      { path: '/users', label: 'User Management', icon: Users, roles: ['admin', 'hr'] },
 
     ]
   }

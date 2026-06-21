@@ -37,14 +37,29 @@ router.get('/', authMiddleware, async (req, res, next) => {
 
     const products = await prisma.product.findMany({
       where,
-      orderBy: { name: 'asc' }
+      orderBy: [
+        { name: 'asc' },
+        { createdAt: 'asc' }
+      ]
     });
-    // Add computed freeToUseQty
-    const enriched = products.map(p => ({
-      ...p,
-      freeToUseQty: Math.max(0, p.onHandQty - p.reservedQty)
-    }));
-    res.json({ success: true, data: enriched });
+
+    // Deduplicate by name, preferring the primary ones
+    const uniqueProducts = [];
+    const seen = new Set();
+    for (const p of products) {
+      if (!seen.has(p.name)) {
+        seen.add(p.name);
+        uniqueProducts.push({
+          ...p,
+          freeToUseQty: Math.max(0, p.onHandQty - p.reservedQty)
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      data: uniqueProducts
+    });
   } catch (err) { next(err); }
 });
 

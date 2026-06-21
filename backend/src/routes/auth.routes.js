@@ -16,7 +16,7 @@ const createUserSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
   password: z.string().min(6),
-  role: z.enum(['admin', 'sales', 'purchase', 'manufacturing', 'inventory']),
+  role: z.enum(['admin', 'sales', 'purchase', 'manufacturing', 'inventory', 'hr']),
   loginId: z.string().optional(),
   phone: z.string().optional(),
   position: z.string().optional()
@@ -58,7 +58,7 @@ const signupSchema = z.object({
   email: z.string().email("Invalid email"),
   loginId: z.string().min(6, "Login ID must be 6-12 chars").max(12, "Login ID must be 6-12 chars"),
   password: z.string().regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*]).{8,}$/, "Password must be at least 8 characters and contain lowercase, uppercase, and special characters"),
-  role: z.enum(['admin', 'sales', 'purchase', 'manufacturing', 'inventory']).default('sales')
+  role: z.enum(['admin', 'sales', 'purchase', 'manufacturing', 'inventory', 'hr']).default('sales')
 });
 
 router.post('/signup', async (req, res, next) => {
@@ -133,7 +133,7 @@ router.get('/me', authMiddleware, async (req, res) => {
 });
 
 // GET /api/auth/users — admin only
-router.get('/users', authMiddleware, requireRole('admin'), async (req, res, next) => {
+router.get('/users', authMiddleware, requireRole('admin', 'hr'), async (req, res, next) => {
   try {
     const users = await prisma.user.findMany({
       select: { id: true, name: true, email: true, loginId: true, role: true, phone: true, position: true, isActive: true, createdAt: true },
@@ -144,7 +144,7 @@ router.get('/users', authMiddleware, requireRole('admin'), async (req, res, next
 });
 
 // POST /api/auth/users — admin only
-router.post('/users', authMiddleware, requireRole('admin'), async (req, res, next) => {
+router.post('/users', authMiddleware, requireRole('admin', 'hr'), async (req, res, next) => {
   try {
     const data = createUserSchema.parse(req.body);
     const exists = await prisma.user.findUnique({ where: { email: data.email } });
@@ -162,7 +162,7 @@ router.post('/users', authMiddleware, requireRole('admin'), async (req, res, nex
 });
 
 // PUT /api/auth/users/:id — admin only
-router.put('/users/:id', authMiddleware, requireRole('admin'), async (req, res, next) => {
+router.put('/users/:id', authMiddleware, requireRole('admin', 'hr'), async (req, res, next) => {
   try {
     const { name, role, phone, position, isActive, loginId } = req.body;
     const user = await prisma.user.update({
@@ -175,7 +175,7 @@ router.put('/users/:id', authMiddleware, requireRole('admin'), async (req, res, 
 });
 
 // DELETE /api/auth/users/:id — admin only
-router.delete('/users/:id', authMiddleware, requireRole('admin'), async (req, res, next) => {
+router.delete('/users/:id', authMiddleware, requireRole('admin', 'hr'), async (req, res, next) => {
   try {
     if (req.params.id === req.user.id) {
       return res.status(400).json({ success: false, message: 'Cannot delete yourself' });

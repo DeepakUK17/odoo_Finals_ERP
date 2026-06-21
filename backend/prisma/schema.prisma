@@ -21,6 +21,27 @@ enum Role {
   purchase
   manufacturing
   inventory
+  hr
+}
+
+enum AttendanceStatus {
+  present
+  absent
+  half_day
+  leave
+}
+
+enum LeaveType {
+  sick
+  casual
+  permission
+  other
+}
+
+enum LeaveStatus {
+  pending
+  approved
+  rejected
 }
 
 enum ProcurementType {
@@ -112,6 +133,8 @@ model User {
   workOrders       WorkOrder[]
   salesOrders      SalesOrder[]
   purchaseOrders   PurchaseOrder[]
+  attendance       Attendance[]
+  leaveRequests    LeaveRequest[]
 
   @@index([email])
   @@index([role])
@@ -460,6 +483,47 @@ model Notification {
   @@index([isRead])
   @@index([createdAt])
   @@map("notifications")
+}
+
+// ─────────────────────────────────────────────
+// HR & ATTENDANCE
+// ─────────────────────────────────────────────
+
+model Attendance {
+  id               String           @id @default(uuid())
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId           String
+  date             DateTime         @db.Date
+  checkIn          DateTime?
+  checkOut         DateTime?
+  totalHours       Float?
+  status           AttendanceStatus @default(absent)
+
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@unique([userId, date])
+  @@index([date])
+  @@map("attendances")
+}
+
+model LeaveRequest {
+  id               String           @id @default(uuid())
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId           String
+  startDate        DateTime         @db.Date
+  endDate          DateTime         @db.Date
+  type             LeaveType
+  customType       String?          // Allow user to type if type is 'other'
+  reason           String?
+  status           LeaveStatus      @default(pending)
+
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@map("leave_requests")
 }
 
 

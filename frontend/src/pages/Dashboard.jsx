@@ -17,8 +17,7 @@ const ROLE_KPIS = {
     { key: 'pendingDeliveries', label: 'Pending Deliveries', icon: TruckIcon, color: 'hsl(38,92%,50%)', bg: 'hsla(38,92%,50%,0.12)' },
     { key: 'totalMO', label: 'Manufacturing Orders', icon: Factory, color: 'hsl(199,89%,55%)', bg: 'hsla(199,89%,55%,0.12)' },
     { key: 'lowStockCount', label: 'Low Stock Alerts', icon: AlertTriangle, color: 'hsl(0,84%,60%)', bg: 'hsla(0,84%,60%,0.12)' },
-    { key: 'totalPurchase', label: 'Purchase Orders', icon: Package, color: 'hsl(270,91%,65%)', bg: 'hsla(270,91%,65%,0.12)' },
-    { key: 'totalProducts', label: 'Products', icon: Package, color: 'hsl(142,69%,45%)', bg: 'hsla(142,69%,45%,0.12)' },
+    { key: 'usersOnLeave', label: 'Employees on Leave', icon: Clock, color: 'hsl(38,92%,50%)', bg: 'hsla(38,92%,50%,0.12)' },
   ],
   sales: [
     { key: 'weeklyOrders', label: 'Sales Orders (This Week)', icon: ShoppingCart, color: 'hsl(217,91%,60%)', bg: 'hsla(217,91%,60%,0.12)' },
@@ -36,6 +35,11 @@ const ROLE_KPIS = {
   inventory: [
     { key: 'totalProducts', label: 'Total Products', icon: Package, color: 'hsl(217,91%,60%)', bg: 'hsla(217,91%,60%,0.12)' },
     { key: 'lowStockCount', label: 'Low Stock Alerts', icon: AlertTriangle, color: 'hsl(0,84%,60%)', bg: 'hsla(0,84%,60%,0.12)' },
+  ],
+  hr: [
+    { key: 'totalEmployees', label: 'Total Employees', icon: Factory, color: 'hsl(217,91%,60%)', bg: 'hsla(217,91%,60%,0.12)' },
+    { key: 'usersPresent', label: 'Present Today', icon: Activity, color: 'hsl(142,69%,45%)', bg: 'hsla(142,69%,45%,0.12)' },
+    { key: 'usersOnLeave', label: 'On Leave Today', icon: Clock, color: 'hsl(38,92%,50%)', bg: 'hsla(38,92%,50%,0.12)' },
   ],
 };
 

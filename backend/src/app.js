@@ -58,6 +58,8 @@ app.use('/api/audit',           require('./routes/audit.routes'));
 app.use('/api/dashboard',       require('./routes/dashboard.routes'));
 app.use('/api/notifications',   require('./routes/notifications.routes'));
 app.use('/api/ai',              require('./routes/ai.routes'));
+app.use('/api/attendance',      require('./routes/attendance.routes'));
+app.use('/api/leaves',          require('./routes/leaves.routes'));
 app.use('/api/upload',          require('./routes/upload.routes'));
 app.use('/api/stock-ledger',    require('./routes/stockledger.routes'));
 
